@@ -1,12 +1,37 @@
 // Edge Function share: публичная ссылка на поход.
 // Принимает share_token (?token=... или {"token": "..."}), проверяет его и отдаёт поход,
-// точки и фото с подписанными ссылками на 1 час. Нет такого токена — 404.
+// точки и фото с подписанными ссылками на 1 час (фото — из Supabase Storage или Cloudflare R2,
+// смотря где лежат). Нет такого токена — 404.
 // Вызывается без входа (verify_jwt = false): доступ даёт только сам случайный токен.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { AwsClient } from 'npm:aws4fetch@1.0.20';
 
 const SIGNED_URL_TTL_S = 3600;
+
+/** Cloudflare R2: ключи — секреты Supabase; без них фото из R2 просто без ссылок. */
+function r2Config(): { client: AwsClient; base: string } | null {
+  const account = Deno.env.get('R2_ACCOUNT_ID');
+  const accessKeyId = Deno.env.get('R2_ACCESS_KEY_ID');
+  const secretAccessKey = Deno.env.get('R2_SECRET_ACCESS_KEY');
+  const bucket = Deno.env.get('R2_BUCKET');
+  if (!account || !accessKeyId || !secretAccessKey || !bucket) return null;
+  return {
+    client: new AwsClient({ accessKeyId, secretAccessKey, service: 's3', region: 'auto' }),
+    base: `https://${account}.r2.cloudflarestorage.com/${bucket}/`,
+  };
+}
+
+async function presignGet(r2: { client: AwsClient; base: string }, key: string): Promise<string> {
+  const url = new URL(r2.base + key.split('/').map(encodeURIComponent).join('/'));
+  url.searchParams.set('X-Amz-Expires', String(SIGNED_URL_TTL_S));
+  const signed = await r2.client.sign(new Request(url, { method: 'GET' }), {
+    aws: { signQuery: true },
+  });
+  return signed.url;
+}
+
 const TOKEN_RE = /^[A-Za-z0-9_-]{22,64}$/;
 
 const CORS = {
@@ -74,7 +99,7 @@ Deno.serve(async (req) => {
     supabase
       .from('media')
       .select(
-        'id, hike_id, point_id, kind, path, thumb_path, duration_s, taken_at, taken_approx, lat, lon, width, height, sort',
+        'id, hike_id, point_id, kind, path, thumb_path, duration_s, taken_at, taken_approx, lat, lon, width, height, sort, storage, bytes',
       )
       .eq('hike_id', hikeId)
       .order('sort'),
@@ -82,12 +107,24 @@ Deno.serve(async (req) => {
   if (pointsRes.error || mediaRes.error) return json({ error: 'server error' }, 500);
 
   const media = mediaRes.data ?? [];
-  let urls = new Map<string, string>();
-  if (media.length) {
-    const paths = media.flatMap((m) => [m.path, m.thumb_path]);
+  const urls = new Map<string, string>();
+  // Старые фото — в Supabase Storage, новые — в Cloudflare R2.
+  const inSupabase = media.filter((m) => m.storage !== 'r2');
+  if (inSupabase.length) {
+    const paths = inSupabase.flatMap((m) => [m.path, m.thumb_path]);
     const signed = await supabase.storage.from('media').createSignedUrls(paths, SIGNED_URL_TTL_S);
     if (signed.error) return json({ error: 'server error' }, 500);
-    urls = new Map(signed.data.map((s) => [s.path ?? '', s.signedUrl]));
+    for (const s of signed.data) urls.set(s.path ?? '', s.signedUrl);
+  }
+  const inR2 = media.filter((m) => m.storage === 'r2');
+  if (inR2.length) {
+    const r2 = r2Config();
+    if (r2) {
+      for (const m of inR2) {
+        urls.set(m.path, await presignGet(r2, m.path));
+        urls.set(m.thumb_path, await presignGet(r2, m.thumb_path));
+      }
+    }
   }
 
   return json({

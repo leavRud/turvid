@@ -1,6 +1,7 @@
 // Панель справа (на телефоне — под картой): карточка точки или «где я сейчас», список точек, место.
 
 import { POINT_DESCRIPTION_MAX, POINT_TITLE_MAX } from '../api/points';
+import type { StorageUsage } from '../api/media';
 import type { PositionStore } from '../player/store';
 import type { MediaItem, Point } from '../types';
 import { h } from '../ui/dom';
@@ -10,8 +11,9 @@ import { formatBytes, formatClock, formatKm } from '../ui/format';
 
 /** Позиция ближе этого к точке — стоим на точке, м. */
 const ON_POINT_M = 0.5;
-/** Бесплатный Supabase: всего 1 ГБ в Storage. */
-const STORAGE_QUOTA_BYTES = 1024 ** 3;
+/** Бесплатно: Supabase Storage — 1 ГБ, Cloudflare R2 — 10 ГБ. */
+const SUPABASE_QUOTA_BYTES = 1024 ** 3;
+const R2_QUOTA_BYTES = 10 * 1024 ** 3;
 
 export interface PlaceInfo {
   km: string;
@@ -57,7 +59,7 @@ export interface PanelContext {
     progress: (done: number, total: number) => void,
   ): Promise<UploadReport>;
   openMedia(point: Point, index: number): void;
-  storage(): Promise<{ hikeBytes: number; totalBytes: number }>;
+  storage(): Promise<StorageUsage>;
 }
 
 export interface Panel {
@@ -561,9 +563,19 @@ export function createPanel(ctx: PanelContext): Panel {
     if (!ctx.editable) return;
     ctx
       .storage()
-      .then(({ hikeBytes, totalBytes }) => {
-        const pct = Math.round((totalBytes / STORAGE_QUOTA_BYTES) * 100);
-        storageLine.textContent = `Место: этот поход ${formatBytes(hikeBytes)} · всего ${formatBytes(totalBytes)} из 1 ГБ (${pct}%).`;
+      .then((u) => {
+        const pct = (bytes: number, quota: number): number => Math.round((bytes / quota) * 100);
+        const parts = [`Место: этот поход ${formatBytes(u.hikeBytes)}`];
+        // Фото и видео — в R2 (если подключён), треки и старые фото — в Supabase.
+        if (u.r2 || u.r2Bytes > 0) {
+          parts.push(
+            `фото и видео ${formatBytes(u.r2Bytes)} из 10 ГБ (${pct(u.r2Bytes, R2_QUOTA_BYTES)}%)`,
+          );
+        }
+        parts.push(
+          `${u.r2 ? 'треки' : 'всё'} в Supabase ${formatBytes(u.supabaseBytes)} из 1 ГБ (${pct(u.supabaseBytes, SUPABASE_QUOTA_BYTES)}%)`,
+        );
+        storageLine.textContent = `${parts.join(' · ')}.`;
       })
       .catch(() => {
         storageLine.textContent = '';
