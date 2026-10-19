@@ -52,7 +52,7 @@ export interface Media {
   /** null — неразобранное. */
   point_id: string | null;
   kind: 'photo' | 'video';
-  /** Где лежат файлы: S3 — Yandex Object Storage (новые) или Supabase Storage (старые). */
+  /** Где лежат файлы: S3 — VK Cloud Object Storage (новые) или Supabase Storage (старые). */
   storage: 'supabase' | 's3';
   /** Размер файла и превью, байты. */
   bytes: number;

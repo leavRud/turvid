@@ -1,13 +1,15 @@
-// Edge Function media: фото и видео в S3-совместимом хранилище (Yandex Object Storage).
+// Edge Function media: фото и видео в S3-совместимом хранилище (VK Cloud Object Storage).
 // Ключи хранилища живут только здесь (секреты Supabase), браузер получает одноразовые ссылки.
 // Только для вошедшего владельца (verify_jwt = true). Действия (POST JSON):
-//   { action: 'status' }                                  → { s3: true|false }
+//   { action: 'status' }                                  → { s3: true|false, cors?: 'ok'|ошибка }
 //   { action: 'upload', hikeId, files: [{ name }] }       → { urls: [{ key, url }] }  (PUT, 1 час)
 //   { action: 'sign', keys: [...] }                       → { urls: { key: url } }    (GET, 1 час)
 //   { action: 'delete', keys: [...] }                     → { deleted: n }
 // Ключи всегда начинаются с <user_id>/ — чужое не подписать и не удалить.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { crypto as stdCrypto } from 'jsr:@std/crypto@1';
+import { encodeBase64 } from 'jsr:@std/encoding@1/base64';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { AwsClient } from 'npm:aws4fetch@1.0.20';
 
@@ -16,6 +18,12 @@ const UUID_RE = /^[0-9a-f-]{36}$/i;
 /** Имя файла внутри похода: uuid[.thumb].ext — как пишет клиент. */
 const NAME_RE = /^[0-9a-f-]{36}(\.thumb)?\.[a-z0-9]{1,8}$/i;
 const MAX_KEYS = 200;
+/** Откуда браузеру можно грузить в бакет; переопределяется секретом S3_CORS_ORIGINS (через запятую). */
+const DEFAULT_ORIGINS = [
+  'https://turvid.netlify.app',
+  'http://127.0.0.1:5173',
+  'http://localhost:5173',
+];
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -36,12 +44,12 @@ interface S3 {
 }
 
 /**
- * Хранилище из секретов Supabase. Адрес и регион по умолчанию — Yandex Object Storage;
- * для другого S3 (Selectel, VK Cloud, Backblaze) задать S3_ENDPOINT и S3_REGION.
+ * Хранилище из секретов Supabase. Адрес и регион по умолчанию — VK Cloud (Москва);
+ * для другого S3 (Selectel, Timeweb, Beget, Backblaze) задать S3_ENDPOINT и S3_REGION.
  */
 function s3Config(): S3 | null {
-  const endpoint = Deno.env.get('S3_ENDPOINT') ?? 'https://storage.yandexcloud.net';
-  const region = Deno.env.get('S3_REGION') ?? 'ru-central1';
+  const endpoint = Deno.env.get('S3_ENDPOINT') ?? 'https://hb.ru-msk.vkcloud-storage.ru';
+  const region = Deno.env.get('S3_REGION') ?? 'ru-msk';
   const accessKeyId = Deno.env.get('S3_ACCESS_KEY_ID');
   const secretAccessKey = Deno.env.get('S3_SECRET_ACCESS_KEY');
   const bucket = Deno.env.get('S3_BUCKET');
@@ -60,6 +68,38 @@ async function presign(s3: S3, key: string, method: 'GET' | 'PUT'): Promise<stri
   url.searchParams.set('X-Amz-Expires', String(URL_TTL_S));
   const signed = await s3.client.sign(new Request(url, { method }), { aws: { signQuery: true } });
   return signed.url;
+}
+
+/**
+ * Разрешить сайту загружать файлы прямо в бакет (CORS). В консоли VK Cloud этой настройки
+ * нет — ставим через S3 API. Идемпотентно; делаем один раз на запуск функции.
+ */
+let corsDone: Promise<string> | null = null;
+function ensureCors(s3: S3): Promise<string> {
+  corsDone ??= (async () => {
+    const origins = (Deno.env.get('S3_CORS_ORIGINS') ?? DEFAULT_ORIGINS.join(','))
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
+    const xml =
+      '<CORSConfiguration><CORSRule>' +
+      origins.map((o) => `<AllowedOrigin>${o}</AllowedOrigin>`).join('') +
+      '<AllowedMethod>GET</AllowedMethod><AllowedMethod>PUT</AllowedMethod>' +
+      '<AllowedMethod>HEAD</AllowedMethod><AllowedHeader>*</AllowedHeader>' +
+      '<MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule></CORSConfiguration>';
+    const body = new TextEncoder().encode(xml);
+    const md5 = encodeBase64(new Uint8Array(await stdCrypto.subtle.digest('MD5', body)));
+    // Операция над самим бакетом: /<bucket>?cors, без завершающего слэша.
+    const res = await s3.client.fetch(`${s3.base.replace(/\/$/, '')}?cors`, {
+      method: 'PUT',
+      body,
+      headers: { 'Content-Type': 'application/xml', 'Content-MD5': md5 },
+    });
+    if (res.ok) return 'ok';
+    corsDone = null; // попробуем ещё раз при следующем запросе
+    return `CORS не настроен: ${res.status} ${(await res.text()).slice(0, 200)}`;
+  })();
+  return corsDone;
 }
 
 Deno.serve(async (req) => {
@@ -84,7 +124,10 @@ Deno.serve(async (req) => {
   }
 
   const s3 = s3Config();
-  if (body['action'] === 'status') return json({ s3: s3 !== null });
+  if (body['action'] === 'status') {
+    if (!s3) return json({ s3: false });
+    return json({ s3: true, cors: await ensureCors(s3) });
+  }
   if (!s3) return json({ error: 's3-not-configured' }, 503);
 
   const ownKeys = (raw: unknown): string[] | null => {
@@ -109,11 +152,13 @@ Deno.serve(async (req) => {
         .eq('id', hikeId)
         .maybeSingle();
       if (!hike) return json({ error: 'not found' }, 404);
+      await ensureCors(s3);
       const urls: { key: string; url: string }[] = [];
       for (const f of files) {
         const name = (f as { name?: unknown })?.name;
-        if (typeof name !== 'string' || !NAME_RE.test(name))
+        if (typeof name !== 'string' || !NAME_RE.test(name)) {
           return json({ error: 'bad name' }, 400);
+        }
         const key = `${userId}/${hikeId}/${name}`;
         urls.push({ key, url: await presign(s3, key, 'PUT') });
       }

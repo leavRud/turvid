@@ -15,10 +15,10 @@ interface S3 {
   base: string;
 }
 
-/** Хранилище фото (Yandex Object Storage по умолчанию) — те же секреты, что у функции media. */
+/** Хранилище фото (VK Cloud Object Storage по умолчанию) — те же секреты, что у функции media. */
 function s3Config(): S3 | null {
-  const endpoint = Deno.env.get('S3_ENDPOINT') ?? 'https://storage.yandexcloud.net';
-  const region = Deno.env.get('S3_REGION') ?? 'ru-central1';
+  const endpoint = Deno.env.get('S3_ENDPOINT') ?? 'https://hb.ru-msk.vkcloud-storage.ru';
+  const region = Deno.env.get('S3_REGION') ?? 'ru-msk';
   const accessKeyId = Deno.env.get('S3_ACCESS_KEY_ID');
   const secretAccessKey = Deno.env.get('S3_SECRET_ACCESS_KEY');
   const bucket = Deno.env.get('S3_BUCKET');
@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
 
   const media = mediaRes.data ?? [];
   const urls = new Map<string, string>();
-  // Старые фото — в Supabase Storage, новые — в S3 (Yandex Object Storage).
+  // Старые фото — в Supabase Storage, новые — в S3 (VK Cloud).
   const inSupabase = media.filter((m) => m.storage !== 's3');
   if (inSupabase.length) {
     const paths = inSupabase.flatMap((m) => [m.path, m.thumb_path]);

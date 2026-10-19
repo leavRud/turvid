@@ -1,4 +1,4 @@
-// Фото и видео похода: файлы в S3-хранилище — Yandex Object Storage (новые) — или в Supabase
+// Фото и видео похода: файлы в S3-хранилище — VK Cloud Object Storage (новые) — или в Supabase
 // Storage (старые и запасной вариант, пока S3 не подключён), строки — в таблице media.
 // С S3 браузер работает только через Edge Function media: она выдаёт одноразовые ссылки.
 
@@ -245,7 +245,7 @@ export async function reorderMedia(ids: string[]): Promise<void> {
 export interface StorageUsage {
   /** Этот поход, всё вместе. */
   hikeBytes: number;
-  /** Фото и видео в S3 (Yandex Object Storage). */
+  /** Фото и видео в S3 (VK Cloud Object Storage). */
   s3Bytes: number;
   /** Supabase Storage: треки и старые фото (1 ГБ бесплатно). */
   supabaseBytes: number;

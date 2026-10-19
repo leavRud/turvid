@@ -13,8 +13,8 @@ import { formatBytes, formatClock, formatKm } from '../ui/format';
 const ON_POINT_M = 0.5;
 /** Бесплатно в Supabase Storage — 1 ГБ. */
 const SUPABASE_QUOTA_BYTES = 1024 ** 3;
-/** Примерная цена стандартного хранения в Yandex Object Storage, ₽ за ГБ в месяц (сверить с тарифами). */
-const S3_RUB_PER_GB_MONTH = 2.5;
+/** Примерная цена горячего хранения в VK Cloud, ₽ за ГБ в месяц (сверить с прайсом). */
+const S3_RUB_PER_GB_MONTH = 2.3;
 
 export interface PlaceInfo {
   km: string;
@@ -567,7 +567,7 @@ export function createPanel(ctx: PanelContext): Panel {
       .then((u) => {
         const pct = (bytes: number, quota: number): number => Math.round((bytes / quota) * 100);
         const parts = [`Место: этот поход ${formatBytes(u.hikeBytes)}`];
-        // Фото и видео — в Yandex Object Storage (если подключён; платно, но копейки),
+        // Фото и видео — в VK Cloud (если подключён; платно, но копейки),
         // треки и старые фото — в Supabase (1 ГБ бесплатно).
         if (u.s3 || u.s3Bytes > 0) {
           const rub = Math.max(1, Math.round((u.s3Bytes / 1024 ** 3) * S3_RUB_PER_GB_MONTH));
