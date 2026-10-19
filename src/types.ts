@@ -52,8 +52,8 @@ export interface Media {
   /** null — неразобранное. */
   point_id: string | null;
   kind: 'photo' | 'video';
-  /** Где лежат файлы: Cloudflare R2 (новые) или Supabase Storage (старые). */
-  storage: 'supabase' | 'r2';
+  /** Где лежат файлы: S3 — Yandex Object Storage (новые) или Supabase Storage (старые). */
+  storage: 'supabase' | 's3';
   /** Размер файла и превью, байты. */
   bytes: number;
   path: string;

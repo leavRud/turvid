@@ -19,7 +19,7 @@
 - Разбор треков: `@tmcw/togeojson`, `jszip` (KMZ). Геометрия: `@turf/turf`, `simplify-js`.
 - Фото и видео: `exifr`, `heic2any`, `mp4box.js`. Часовой пояс: `tz-lookup`.
 - Бэкенд: Supabase (Auth по ссылке на почту, Postgres + RLS, Storage для треков, Edge Functions `share` и `media`) через `@supabase/supabase-js`.
-- Фото и видео: Cloudflare R2 (приватный бакет). Ключи R2 — только в секретах Supabase (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`); браузер получает подписанные ссылки от функции `media`.
+- Фото и видео: Yandex Object Storage (S3, приватный бакет). Ключи — только в секретах Supabase (`S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`; при другом S3 — ещё `S3_ENDPOINT`, `S3_REGION`); браузер получает подписанные ссылки от функции `media`.
 - Тесты: Vitest. Линтер: ESLint + Prettier.
 - Новые зависимости добавляй только если без них правда сложно, и скажи, зачем.
 

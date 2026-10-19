@@ -1,9 +1,9 @@
-// Edge Function media: фото и видео в Cloudflare R2. Ключи R2 живут только здесь (секреты Supabase),
-// браузер получает одноразовые подписанные ссылки.
+// Edge Function media: фото и видео в S3-совместимом хранилище (Yandex Object Storage).
+// Ключи хранилища живут только здесь (секреты Supabase), браузер получает одноразовые ссылки.
 // Только для вошедшего владельца (verify_jwt = true). Действия (POST JSON):
-//   { action: 'status' }                                  → { r2: true|false }
-//   { action: 'upload', hikeId, files: [{ name, contentType }] } → { urls: [{ key, url }] }  (PUT, 1 час)
-//   { action: 'sign', keys: [...] }                       → { urls: { key: url } }            (GET, 1 час)
+//   { action: 'status' }                                  → { s3: true|false }
+//   { action: 'upload', hikeId, files: [{ name }] }       → { urls: [{ key, url }] }  (PUT, 1 час)
+//   { action: 'sign', keys: [...] }                       → { urls: { key: url } }    (GET, 1 час)
 //   { action: 'delete', keys: [...] }                     → { deleted: n }
 // Ключи всегда начинаются с <user_id>/ — чужое не подписать и не удалить.
 
@@ -30,26 +30,35 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function r2Config(): { client: AwsClient; base: string } | null {
-  const account = Deno.env.get('R2_ACCOUNT_ID');
-  const accessKeyId = Deno.env.get('R2_ACCESS_KEY_ID');
-  const secretAccessKey = Deno.env.get('R2_SECRET_ACCESS_KEY');
-  const bucket = Deno.env.get('R2_BUCKET');
-  if (!account || !accessKeyId || !secretAccessKey || !bucket) return null;
+interface S3 {
+  client: AwsClient;
+  base: string;
+}
+
+/**
+ * Хранилище из секретов Supabase. Адрес и регион по умолчанию — Yandex Object Storage;
+ * для другого S3 (Selectel, VK Cloud, Backblaze) задать S3_ENDPOINT и S3_REGION.
+ */
+function s3Config(): S3 | null {
+  const endpoint = Deno.env.get('S3_ENDPOINT') ?? 'https://storage.yandexcloud.net';
+  const region = Deno.env.get('S3_REGION') ?? 'ru-central1';
+  const accessKeyId = Deno.env.get('S3_ACCESS_KEY_ID');
+  const secretAccessKey = Deno.env.get('S3_SECRET_ACCESS_KEY');
+  const bucket = Deno.env.get('S3_BUCKET');
+  if (!accessKeyId || !secretAccessKey || !bucket) return null;
   return {
-    client: new AwsClient({ accessKeyId, secretAccessKey, service: 's3', region: 'auto' }),
-    base: `https://${account}.r2.cloudflarestorage.com/${bucket}/`,
+    client: new AwsClient({ accessKeyId, secretAccessKey, service: 's3', region }),
+    base: `${endpoint.replace(/\/+$/, '')}/${bucket}/`,
   };
 }
 
-async function presign(
-  r2: { client: AwsClient; base: string },
-  key: string,
-  method: 'GET' | 'PUT',
-): Promise<string> {
-  const url = new URL(r2.base + key.split('/').map(encodeURIComponent).join('/'));
+const objectUrl = (s3: S3, key: string): string =>
+  s3.base + key.split('/').map(encodeURIComponent).join('/');
+
+async function presign(s3: S3, key: string, method: 'GET' | 'PUT'): Promise<string> {
+  const url = new URL(objectUrl(s3, key));
   url.searchParams.set('X-Amz-Expires', String(URL_TTL_S));
-  const signed = await r2.client.sign(new Request(url, { method }), { aws: { signQuery: true } });
+  const signed = await s3.client.sign(new Request(url, { method }), { aws: { signQuery: true } });
   return signed.url;
 }
 
@@ -74,9 +83,9 @@ Deno.serve(async (req) => {
     return json({ error: 'bad json' }, 400);
   }
 
-  const r2 = r2Config();
-  if (body['action'] === 'status') return json({ r2: r2 !== null });
-  if (!r2) return json({ error: 'r2-not-configured' }, 503);
+  const s3 = s3Config();
+  if (body['action'] === 'status') return json({ s3: s3 !== null });
+  if (!s3) return json({ error: 's3-not-configured' }, 503);
 
   const ownKeys = (raw: unknown): string[] | null => {
     if (!Array.isArray(raw) || raw.length > MAX_KEYS) return null;
@@ -106,7 +115,7 @@ Deno.serve(async (req) => {
         if (typeof name !== 'string' || !NAME_RE.test(name))
           return json({ error: 'bad name' }, 400);
         const key = `${userId}/${hikeId}/${name}`;
-        urls.push({ key, url: await presign(r2, key, 'PUT') });
+        urls.push({ key, url: await presign(s3, key, 'PUT') });
       }
       return json({ urls });
     }
@@ -114,7 +123,7 @@ Deno.serve(async (req) => {
       const keys = ownKeys(body['keys']);
       if (!keys) return json({ error: 'bad keys' }, 400);
       const urls: Record<string, string> = {};
-      for (const key of keys) urls[key] = await presign(r2, key, 'GET');
+      for (const key of keys) urls[key] = await presign(s3, key, 'GET');
       return json({ urls });
     }
     case 'delete': {
@@ -122,8 +131,7 @@ Deno.serve(async (req) => {
       if (!keys) return json({ error: 'bad keys' }, 400);
       let deleted = 0;
       for (const key of keys) {
-        const url = r2.base + key.split('/').map(encodeURIComponent).join('/');
-        const res = await r2.client.fetch(url, { method: 'DELETE' });
+        const res = await s3.client.fetch(objectUrl(s3, key), { method: 'DELETE' });
         if (res.ok || res.status === 404) deleted++;
       }
       return json({ deleted });

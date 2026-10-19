@@ -2,7 +2,7 @@ import type { ProcessedTrack } from '../track/process';
 import type { Hike, HikeBundle, HikeListItem, Media, Point, TrackData } from '../types';
 import { supabase } from './client';
 import { currentUserId } from './auth';
-import { deleteHikeR2Files, signMedia } from './media';
+import { deleteHikeS3Files, signMedia } from './media';
 
 const BUCKET = 'media';
 
@@ -104,8 +104,8 @@ export async function createHike({
 
 /** Удаляет поход: все файлы из его папки в Storage, затем строку (точки и медиа — каскадом). */
 export async function deleteHike(hikeId: string): Promise<void> {
-  // Сначала фото и видео в R2 — пока строки media ещё есть и по ним видно ключи.
-  await deleteHikeR2Files(hikeId);
+  // Сначала фото и видео в S3 — пока строки media ещё есть и по ним видно ключи.
+  await deleteHikeS3Files(hikeId);
   const userId = await currentUserId();
   const folder = `${userId}/${hikeId}`;
   const storage = supabase.storage.from(BUCKET);

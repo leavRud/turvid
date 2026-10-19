@@ -11,9 +11,10 @@ import { formatBytes, formatClock, formatKm } from '../ui/format';
 
 /** Позиция ближе этого к точке — стоим на точке, м. */
 const ON_POINT_M = 0.5;
-/** Бесплатно: Supabase Storage — 1 ГБ, Cloudflare R2 — 10 ГБ. */
+/** Бесплатно в Supabase Storage — 1 ГБ. */
 const SUPABASE_QUOTA_BYTES = 1024 ** 3;
-const R2_QUOTA_BYTES = 10 * 1024 ** 3;
+/** Примерная цена стандартного хранения в Yandex Object Storage, ₽ за ГБ в месяц (сверить с тарифами). */
+const S3_RUB_PER_GB_MONTH = 2.5;
 
 export interface PlaceInfo {
   km: string;
@@ -566,14 +567,14 @@ export function createPanel(ctx: PanelContext): Panel {
       .then((u) => {
         const pct = (bytes: number, quota: number): number => Math.round((bytes / quota) * 100);
         const parts = [`Место: этот поход ${formatBytes(u.hikeBytes)}`];
-        // Фото и видео — в R2 (если подключён), треки и старые фото — в Supabase.
-        if (u.r2 || u.r2Bytes > 0) {
-          parts.push(
-            `фото и видео ${formatBytes(u.r2Bytes)} из 10 ГБ (${pct(u.r2Bytes, R2_QUOTA_BYTES)}%)`,
-          );
+        // Фото и видео — в Yandex Object Storage (если подключён; платно, но копейки),
+        // треки и старые фото — в Supabase (1 ГБ бесплатно).
+        if (u.s3 || u.s3Bytes > 0) {
+          const rub = Math.max(1, Math.round((u.s3Bytes / 1024 ** 3) * S3_RUB_PER_GB_MONTH));
+          parts.push(`фото и видео ${formatBytes(u.s3Bytes)} (≈ ${rub} ₽ в месяц)`);
         }
         parts.push(
-          `${u.r2 ? 'треки' : 'всё'} в Supabase ${formatBytes(u.supabaseBytes)} из 1 ГБ (${pct(u.supabaseBytes, SUPABASE_QUOTA_BYTES)}%)`,
+          `${u.s3 ? 'треки' : 'всё'} в Supabase ${formatBytes(u.supabaseBytes)} из 1 ГБ (${pct(u.supabaseBytes, SUPABASE_QUOTA_BYTES)}%)`,
         );
         storageLine.textContent = `${parts.join(' · ')}.`;
       })
