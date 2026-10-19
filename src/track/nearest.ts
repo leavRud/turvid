@@ -17,8 +17,16 @@ export interface NearestResult {
   offset: number;
 }
 
-/** Проекция точки на каждый отрезок трека; позиция интерполируется по `dist`. */
-export function nearestOnTrack(line: TrackLine, lat: number, lon: number): NearestResult | null {
+/**
+ * Проекция точки на каждый отрезок трека; позиция интерполируется по `dist`.
+ * `range` — искать только на отрезках, задевающих [from, to] метров (окно вокруг стрелки).
+ */
+export function nearestOnTrack(
+  line: TrackLine,
+  lat: number,
+  lon: number,
+  range?: { from: number; to: number },
+): NearestResult | null {
   const n = line.lat.length;
   if (!n) return null;
   const project = localProjection(lat);
@@ -28,6 +36,9 @@ export function nearestOnTrack(line: TrackLine, lat: number, lon: number): Neare
 
   for (let i = 0; i < Math.max(1, n - 1); i++) {
     const j = Math.min(i + 1, n - 1);
+    if (range && ((line.dist[j] as number) < range.from || (line.dist[i] as number) > range.to)) {
+      continue;
+    }
     const [ax, ay] = project(line.lat[i] as number, line.lon[i] as number);
     const [bx, by] = project(line.lat[j] as number, line.lon[j] as number);
     const dx = bx - ax;

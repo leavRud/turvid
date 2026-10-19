@@ -12,9 +12,16 @@ if (!root) throw new Error('Нет элемента #app');
 const app: HTMLElement = root;
 
 let session: Session | null = null;
+/** Уборка предыдущего экрана (карта, подписки на клавиатуру). */
+let cleanup: (() => void) | null = null;
+/** Номер отрисовки: асинхронный экран, который опоздал, сразу убирает за собой. */
+let renderId = 0;
 
 function render(): void {
   const route = currentRoute();
+  cleanup?.();
+  cleanup = null;
+  const id = ++renderId;
 
   if (!session && !isPublic(route)) {
     navigate('/login', { replace: true });
@@ -34,6 +41,15 @@ function render(): void {
       break;
     case 'newHike':
       renderNewHike(app);
+      break;
+    case 'hike':
+      // Экран с картой грузится отдельно: MapLibre тяжёлый, вход и список без него быстрее.
+      void import('./pages/hike-view')
+        .then(({ renderHikeView }) => renderHikeView(app, route.id))
+        .then((done) => {
+          if (id === renderId) cleanup = done;
+          else done();
+        });
       break;
     case 'notFound':
       app.replaceChildren(

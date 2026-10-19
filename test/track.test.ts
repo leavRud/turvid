@@ -200,6 +200,14 @@ describe('nearestOnTrack', () => {
     expect(near?.pos).toBeCloseTo(40, 0);
     expect(near?.offset).toBeCloseTo(27.8, 0);
   });
+
+  it('окно по позиции: на маршруте «туда-обратно» берёт свою ветку', () => {
+    // Туда 0..100 м на север и обратно 100..200 м по тому же месту.
+    const track = { lat: [60, 60 + 100 * M, 60], lon: [30, 30, 30], dist: [0, 100, 200] };
+    const lat = 60 + 30 * M;
+    expect(nearestOnTrack(track, lat, 30, { from: 0, to: 100 })?.pos).toBeCloseTo(30, 0);
+    expect(nearestOnTrack(track, lat, 30, { from: 120, to: 200 })?.pos).toBeCloseTo(170, 0);
+  });
 });
 
 describe('processTrack', () => {

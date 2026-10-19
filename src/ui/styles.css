@@ -18,6 +18,24 @@
   --color-day-2: #3767b0;
   --color-day-3: #8a4fa8;
   --color-backdrop: rgb(0 0 0 / 45%);
+  --color-track-muted: #8d9a93;
+  --color-track-casing: #ffffff;
+  --color-point: #c0632b;
+  --color-arrow: #2f6f4f;
+  --color-arrow-stroke: #ffffff;
+  --color-strip-bg: #e9ebe6;
+  --color-strip-day: #dfe4dc;
+  --color-strip-stop: rgb(0 0 0 / 14%);
+  --color-strip-profile: #b9cfc0;
+  --color-speed-0: #b8bdb9;
+  --color-speed-1: #e3b04b;
+  --color-speed-2: #6fae7c;
+  --color-speed-3: #2f6f4f;
+  --map-height: 55vh;
+  --map-height-desktop: calc(100vh - 300px);
+  --strip-height: 64px;
+  --panel-width: 320px;
+  --arrow-size: 44px;
   --track-width: 2.5px;
   --minimap-size: 96px;
   --dialog-max: 440px;
@@ -55,6 +73,19 @@
     --color-day-1: #f0a06a;
     --color-day-2: #86aef0;
     --color-day-3: #c897e0;
+    --color-track-muted: #7d8a83;
+    --color-track-casing: #141816;
+    --color-point: #f0a06a;
+    --color-arrow: #6fbf8e;
+    --color-arrow-stroke: #0f1a14;
+    --color-strip-bg: #1d2320;
+    --color-strip-day: #252d29;
+    --color-strip-stop: rgb(255 255 255 / 16%);
+    --color-strip-profile: #35503f;
+    --color-speed-0: #4a524e;
+    --color-speed-1: #b8892f;
+    --color-speed-2: #4f8e5d;
+    --color-speed-3: #6fbf8e;
   }
 }
 
@@ -472,4 +503,359 @@ h2 {
 
 .dialog p {
   margin: 0;
+}
+
+/* Экран просмотра похода */
+
+.hike-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--gutter) var(--space-4);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.hike-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.hike-head h1 {
+  font-size: 1.5em;
+  overflow-wrap: anywhere;
+}
+
+.hike-head p {
+  margin: 0;
+}
+
+.hike-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.hike-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.hike-map {
+  height: var(--map-height);
+  min-height: 280px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.hike-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+@media (min-width: 900px) {
+  .hike-body {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .hike-main {
+    flex: 1;
+  }
+
+  .hike-map {
+    height: var(--map-height-desktop);
+    min-height: 360px;
+  }
+
+  .hike-panel {
+    flex: none;
+    width: var(--panel-width);
+  }
+}
+
+.now {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.now dt {
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.now dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.point-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.point-item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.point-title {
+  overflow-wrap: anywhere;
+}
+
+.player-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.play-btn {
+  align-self: auto;
+  min-width: 120px;
+}
+
+/* Стрелка на карте */
+
+.map-arrow {
+  position: relative;
+  width: var(--arrow-size);
+  height: var(--arrow-size);
+  cursor: grab;
+  touch-action: none;
+}
+
+.map-arrow.dragging {
+  cursor: grabbing;
+}
+
+.map-arrow-icon {
+  width: 100%;
+  height: 100%;
+}
+
+.map-arrow-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.map-arrow-icon path {
+  fill: var(--color-arrow);
+  stroke: var(--color-arrow-stroke);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+/* Плашка над стрелкой, по центру: справа она вылезала за край узкой карты. */
+.map-arrow-badge {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + var(--space-1));
+  transform: translateX(-50%);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.map-follow {
+  min-height: 29px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.map-follow[aria-pressed='true'] {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+/* Нижняя полоса */
+
+.strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.strip-modes {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.strip-mode {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.strip-mode[aria-pressed='true'] {
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.strip-track {
+  position: relative;
+  height: var(--strip-height);
+  min-height: var(--tap);
+  border-radius: var(--radius);
+  background: var(--color-strip-bg);
+  touch-action: none;
+  cursor: pointer;
+  user-select: none;
+  overflow: hidden;
+}
+
+.strip-track:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.strip-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.strip-day {
+  fill: var(--color-strip-day);
+}
+
+.strip-stop {
+  fill: var(--color-strip-stop);
+}
+
+.strip-profile {
+  fill: var(--color-strip-profile);
+}
+
+.strip-tick {
+  fill: var(--color-muted);
+}
+
+.speed-0 {
+  fill: var(--color-speed-0);
+}
+
+.speed-1 {
+  fill: var(--color-speed-1);
+}
+
+.speed-2 {
+  fill: var(--color-speed-2);
+}
+
+.speed-3 {
+  fill: var(--color-speed-3);
+}
+
+.strip-labels,
+.strip-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.strip-label {
+  position: absolute;
+  top: 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.strip-label-day {
+  padding-left: 4px;
+  color: var(--color-text);
+}
+
+.strip-label-stop {
+  top: 22px;
+  transform: translateX(-50%);
+}
+
+.strip-label-km {
+  top: auto;
+  bottom: 12px;
+  transform: translateX(-50%);
+}
+
+.strip-point {
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: 50%;
+  background: var(--color-point);
+  border: 2px solid var(--color-surface);
+}
+
+.strip-thumb {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  margin-left: -1.5px;
+  background: var(--color-accent);
+  pointer-events: none;
+}
+
+.strip-thumb::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-surface);
+}
+
+.hike-card-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.hike-card-link:hover {
+  text-decoration: underline;
 }

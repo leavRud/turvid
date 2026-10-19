@@ -31,14 +31,17 @@ describe('эталон zepp-2days.gpx', () => {
     expect(elapsed).toBeLessThan(3000);
   });
 
-  it('по упрощённому треку дни и крупные остановки находятся так же', async () => {
+  it('по упрощённому треку дни и остановки находятся так же', async () => {
     const buf = readFileSync('test/fixtures/zepp-2days.gpx');
     const data = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-    const { track } = processTrack(await parseTrackFile('zepp-2days.gpx', data));
+    const r = processTrack(await parseTrackFile('zepp-2days.gpx', data));
+    const { track } = r;
     const t = track.t ?? [];
     const days = splitDays(t, t.length);
     expect(days).toHaveLength(2);
-    const long = findStops(track.lat, track.lon, t, days).filter((s) => s.durationS >= 45 * 60);
-    expect(long.length).toBeGreaterThanOrEqual(3);
+    const stops = findStops(track.lat, track.lon, t, days);
+    expect(stops).toHaveLength(r.stats.stops);
+    const longest = stops.map((s) => Math.round(s.durationS / 60)).sort((a, b) => b - a);
+    expect(longest.slice(0, 3)).toEqual([98, 89, 50]);
   });
 });

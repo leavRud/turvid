@@ -1,7 +1,11 @@
 // Маршрутизация через History API. Разбор пути — чистая функция.
 
 export type Route =
-  { name: 'hikes' } | { name: 'newHike' } | { name: 'login' } | { name: 'notFound'; path: string };
+  | { name: 'hikes' }
+  | { name: 'newHike' }
+  | { name: 'hike'; id: string }
+  | { name: 'login' }
+  | { name: 'notFound'; path: string };
 
 /** Превращает путь адреса в маршрут. Хвостовой слэш не важен. */
 export function matchRoute(pathname: string): Route {
@@ -14,8 +18,11 @@ export function matchRoute(pathname: string): Route {
       return { name: 'newHike' };
     case '/login':
       return { name: 'login' };
-    default:
+    default: {
+      const hike = /^\/hikes\/([0-9a-f-]{36})$/i.exec(path);
+      if (hike?.[1]) return { name: 'hike', id: hike[1].toLowerCase() };
       return { name: 'notFound', path };
+    }
   }
 }
 

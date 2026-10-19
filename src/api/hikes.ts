@@ -1,5 +1,5 @@
 import type { ProcessedTrack } from '../track/process';
-import type { HikeListItem, TrackData } from '../types';
+import type { Hike, HikeBundle, HikeListItem, Point, TrackData } from '../types';
 import { supabase } from './client';
 
 const BUCKET = 'media';
@@ -123,4 +123,24 @@ export async function deleteHike(hikeId: string): Promise<void> {
   }
   const { error } = await supabase.from('hikes').delete().eq('id', hikeId);
   if (error) throw error;
+}
+
+/** Поход с точками и числом фото для экрана просмотра. null — нет такого (или чужой). */
+export async function getHike(hikeId: string): Promise<HikeBundle | null> {
+  const { data, error } = await supabase
+    .from('hikes')
+    .select('*, points(*), media(count)')
+    .eq('id', hikeId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const { points, media, ...hike } = data as unknown as Hike & {
+    points: Point[] | null;
+    media: { count: number }[] | null;
+  };
+  return {
+    hike,
+    points: [...(points ?? [])].sort((a, b) => a.pos_m - b.pos_m),
+    photos: media?.[0]?.count ?? 0,
+  };
 }

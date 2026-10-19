@@ -32,3 +32,22 @@ export interface Hike {
 
 /** Поход для списка: без служебных полей, но с треком для мини-карты и числом фото. */
 export type HikeListItem = Omit<Hike, 'source_path' | 'share_token'> & { photos: number };
+
+/** Строка таблицы `points`: место на треке с названием и описанием. */
+export interface Point {
+  id: string;
+  hike_id: string;
+  pos_m: number;
+  lat: number;
+  lon: number;
+  title: string;
+  description: string;
+  created_at: string;
+}
+
+/** Всё, что нужно экрану просмотра похода. */
+export interface HikeBundle {
+  hike: Hike;
+  points: Point[];
+  photos: number;
+}

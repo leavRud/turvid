@@ -124,7 +124,9 @@ export function processTrack(parsed: ParsedFile): ProcessedTrack {
   const movingSpeedKmh = movingS ? distanceM / 1000 / (movingS / 3600) : null;
 
   // Упрощение
-  const keep = simplifyIndices(lat, lon, days);
+  // Границы остановок сохраняются, чтобы по упрощённому треку остановки находились так же.
+  const stopEdges = stops.flatMap((s) => [s.start, s.end]);
+  const keep = simplifyIndices(lat, lon, days, undefined, undefined, stopEdges);
   const t0 = t ? (t[0] as number) : 0;
   const track: TrackData = {
     lon: keep.map((i) => round(lon[i] as number, 6)),

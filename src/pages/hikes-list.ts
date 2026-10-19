@@ -126,6 +126,7 @@ export function hikeCard(hike: HikeListItem, onDelete: (hike: HikeListItem) => v
     `${hike.photos} фото`,
   ].join(' · ');
 
+  const href = `/hikes/${hike.id}`;
   const remove = h('button', { type: 'button', class: 'btn btn-ghost btn-small' }, 'Удалить');
   remove.addEventListener('click', () => onDelete(hike));
 
@@ -133,14 +134,14 @@ export function hikeCard(hike: HikeListItem, onDelete: (hike: HikeListItem) => v
     'article',
     { class: 'hike-card' },
     h(
-      'div',
-      { class: 'hike-card-map' },
+      'a',
+      { href, class: 'hike-card-map', 'data-link': true, tabindex: '-1', 'aria-hidden': 'true' },
       trackSvg(hike.track, { width: 120, height: 120, maxPoints: 150 }),
     ),
     h(
       'div',
       { class: 'hike-card-body' },
-      h('h2', {}, hike.title),
+      h('h2', {}, h('a', { href, class: 'hike-card-link', 'data-link': true }, hike.title)),
       h('p', { class: 'muted' }, dates),
       h('p', {}, facts),
       h('div', { class: 'hike-card-actions' }, remove),
