@@ -3,6 +3,8 @@
 import type { Stop } from '../track/stops';
 import type { TrackData } from '../types';
 import type { Axis } from './axis';
+import { pointAt, posAtTime } from './position';
+import { daylight, sunAltitude } from './sun';
 
 export type StripMode = 'profile' | 'timeline' | 'slider';
 
@@ -114,12 +116,9 @@ export interface StopMark {
   x0: number;
   x1: number;
   durationS: number;
-  /** Подпись с длительностью — для остановок от 10 минут. */
-  labeled: boolean;
 }
 
-export const STOP_LABEL_MIN_S = 10 * 60;
-
+/** Отметки остановок на оси времени (без подписей длительности — так решили на этапе 3). */
 export function stopMarks(
   track: TrackData,
   stops: Stop[],
@@ -131,6 +130,72 @@ export function stopMarks(
     x0: timeToX(t[s.start] as number),
     x1: timeToX(t[s.end] as number),
     durationS: s.durationS,
-    labeled: s.durationS >= STOP_LABEL_MIN_S,
   }));
+}
+
+export interface NightStop {
+  /** Доля длины дня 0..1. */
+  offset: number;
+  /** 0 — светло, 1 — ночь. */
+  night: number;
+}
+
+/**
+ * Темнота по ходу дня для фона шкалы времени: высота солнца в том месте трека,
+ * где был в этот момент, раз в stepS секунд.
+ */
+export function nightStops(
+  track: TrackData,
+  startedAt: number,
+  startT: number,
+  endT: number,
+  stepS = 600,
+): NightStop[] {
+  const span = Math.max(endT - startT, 1);
+  const count = Math.max(2, Math.ceil(span / stepS) + 1);
+  const out: NightStop[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = startT + (span * i) / (count - 1);
+    const p = pointAt(track, posAtTime(track, t));
+    const alt = sunAltitude((startedAt + t) * 1000, p.lat, p.lon);
+    out.push({ offset: i / (count - 1), night: 1 - daylight(alt) });
+  }
+  return out;
+}
+
+/** Видимое окно полосы при масштабе: доли оси [a, b]. */
+export interface View {
+  a: number;
+  b: number;
+}
+
+/** Самое узкое окно — 1% оси (масштаб ×100). */
+export const MIN_VIEW = 0.01;
+
+function clampView(a: number, w: number): View {
+  const width = Math.min(Math.max(w, MIN_VIEW), 1);
+  const start = Math.min(Math.max(a, 0), 1 - width);
+  return { a: start, b: start + width };
+}
+
+/** Масштаб в factor раз (меньше 1 — приблизить) вокруг точки оси at, которая остаётся на месте. */
+export function zoomView(view: View, factor: number, at: number): View {
+  const w = view.b - view.a;
+  const f = w > 0 ? (at - view.a) / w : 0.5;
+  const nw = Math.min(Math.max(w * factor, MIN_VIEW), 1);
+  return clampView(at - f * nw, nw);
+}
+
+/** Сдвиг окна на dx долей оси. */
+export function panView(view: View, dx: number): View {
+  return clampView(view.a + dx, view.b - view.a);
+}
+
+/** Минимально сдвигает окно, чтобы x было не ближе margin (доля окна) к краю. */
+export function followView(view: View, x: number, margin = 0.1): View {
+  const w = view.b - view.a;
+  const m = w * margin;
+  if (x < view.a + m) return clampView(x - m, w);
+  if (x > view.b - m) return clampView(x + m - w, w);
+  return view;
 }

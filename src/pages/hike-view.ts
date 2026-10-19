@@ -27,13 +27,22 @@ const SPEEDS = [1, 2, 4] as const;
 /** Как часто переписывать ?pos= в адресе, мс. */
 const URL_DEBOUNCE_MS = 300;
 
-/** Загружает поход и показывает его. Возвращает функцию уборки. */
-export async function renderHikeView(root: HTMLElement, id: string): Promise<() => void> {
+/**
+ * Загружает поход и показывает его. Возвращает функцию уборки.
+ * isCurrent — экран ещё нужен: если пока грузили, ушли (или открыли поход второй раз),
+ * опоздавший ответ ничего не рисует, иначе он затирал бы живой экран мёртвой копией.
+ */
+export async function renderHikeView(
+  root: HTMLElement,
+  id: string,
+  isCurrent: () => boolean = () => true,
+): Promise<() => void> {
   root.replaceChildren(h('main', { class: 'page' }, h('p', { class: 'muted' }, 'Загружаю поход…')));
   let bundle: HikeBundle | null;
   try {
     bundle = await getHike(id);
   } catch (err) {
+    if (!isCurrent()) return () => undefined;
     root.replaceChildren(
       h(
         'main',
@@ -43,6 +52,7 @@ export async function renderHikeView(root: HTMLElement, id: string): Promise<() 
     );
     return () => undefined;
   }
+  if (!isCurrent()) return () => undefined;
   if (!bundle) {
     root.replaceChildren(
       h(
@@ -223,15 +233,22 @@ export function mountHikeView(root: HTMLElement, { hike, points, photos }: HikeB
     ),
   );
 
-  const map = createHikeMap({
-    container: mapBox,
-    track,
-    bbox: hike.bbox,
-    points,
-    store,
-    label: badgeText,
-  });
-  cleanups.push(map.destroy);
+  // Без WebGL MapLibre падает при создании — тогда остальной экран работает, а в рамке причина.
+  try {
+    const map = createHikeMap({
+      container: mapBox,
+      track,
+      bbox: hike.bbox,
+      points,
+      store,
+      label: badgeText,
+    });
+    cleanups.push(map.destroy);
+  } catch (err) {
+    mapBox.replaceChildren(
+      h('p', { class: 'map-error' }, `Карта не загрузилась: ${errorText(err)}`),
+    );
+  }
 
   // Позиция → панель и адрес страницы
   let urlTimer = 0;

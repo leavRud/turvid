@@ -12,12 +12,18 @@ import {
   trackLength,
 } from '../src/player/position';
 import {
+  followView,
+  MIN_VIEW,
+  nightStops,
+  panView,
   profilePath,
   speedBands,
   speedLevel,
   stopMarks,
   stripModes,
+  zoomView,
 } from '../src/player/strip-model';
+import { daylight, sunAltitude } from '../src/player/sun';
 import { splitDays, summarizeDays } from '../src/track/days';
 import type { TrackData } from '../src/types';
 
@@ -190,11 +196,77 @@ describe('strip model', () => {
     expect(bands.some((b) => b.level === 0)).toBe(true);
   });
 
-  it('отметки остановок: подпись от 10 минут', () => {
+  it('отметки остановок', () => {
     const a = timeAxis(track, summarizeDays(track));
     const marks = stopMarks(track, [{ start: 1, end: 2, durationS: 600 }], a.timeToX);
     expect(marks).toHaveLength(1);
-    expect(marks[0]!.labeled).toBe(true);
     expect(marks[0]!.x1).toBeGreaterThan(marks[0]!.x0);
+  });
+});
+
+describe('sun', () => {
+  // Место эталонного похода, 17 октября 2026.
+  const lat = 61.11;
+  const lon = 29.87;
+  const at = (hhmmUtc: string): number => Date.parse('2026-10-17T' + hhmmUtc + ':00Z');
+
+  it('днём солнце над горизонтом, ночью под ним', () => {
+    expect(sunAltitude(at('09:45'), lat, lon)).toBeGreaterThan(18);
+    expect(sunAltitude(at('20:00'), lat, lon)).toBeLessThan(-20);
+  });
+
+  it('закат около 17:37 по Москве (14:37 UTC)', () => {
+    expect(sunAltitude(at('14:20'), lat, lon)).toBeGreaterThan(0);
+    expect(sunAltitude(at('14:55'), lat, lon)).toBeLessThan(0);
+  });
+
+  it('светлота: ночь, сумерки, день', () => {
+    expect(daylight(-10)).toBe(0);
+    expect(daylight(0)).toBe(0.5);
+    expect(daylight(10)).toBe(1);
+  });
+
+  it('фон дня: светло в начале, темнеет к вечеру', () => {
+    // День с 15:00 до 19:00 МСК (12:00–16:00 UTC) в одной точке.
+    const start = Date.parse('2026-10-17T12:00:00Z') / 1000;
+    const track = { lat: [lat, lat], lon: [lon, lon], ele: null, t: [0, 4 * 3600], dist: [0, 1] };
+    const stops = nightStops(track, start, 0, 4 * 3600);
+    expect(stops[0]!.offset).toBe(0);
+    expect(stops.at(-1)!.offset).toBe(1);
+    expect(stops[0]!.night).toBe(0);
+    expect(stops.at(-1)!.night).toBe(1);
+  });
+});
+
+describe('масштаб полосы', () => {
+  const all = { a: 0, b: 1 };
+
+  it('приближение вокруг точки оставляет её на месте', () => {
+    const v = zoomView(all, 0.5, 0.5);
+    expect(v.a).toBeCloseTo(0.25);
+    expect(v.b).toBeCloseTo(0.75);
+    const left = zoomView(all, 0.5, 0);
+    expect(left).toEqual({ a: 0, b: 0.5 });
+  });
+
+  it('не дальше ×100 и не шире всей оси', () => {
+    expect(zoomView(all, 0.0001, 0.3).b - zoomView(all, 0.0001, 0.3).a).toBeCloseTo(MIN_VIEW);
+    expect(zoomView({ a: 0.2, b: 0.4 }, 100, 0.3)).toEqual(all);
+  });
+
+  it('сдвиг упирается в края', () => {
+    expect(panView({ a: 0.5, b: 0.75 }, 0.5)).toEqual({ a: 0.75, b: 1 });
+    const back = panView({ a: 0.1, b: 0.3 }, -1);
+    expect(back.a).toBe(0);
+    expect(back.b).toBeCloseTo(0.2);
+  });
+
+  it('окно едет за стрелкой, если та у края', () => {
+    const v = { a: 0, b: 0.2 };
+    expect(followView(v, 0.1)).toBe(v);
+    const moved = followView(v, 0.3);
+    expect(moved.b - moved.a).toBeCloseTo(0.2);
+    expect(0.3).toBeLessThan(moved.b);
+    expect(0.3).toBeGreaterThan(moved.a);
   });
 });

@@ -39,6 +39,8 @@ export function currentRoute(): Route {
 }
 
 export function navigate(path: string, { replace = false } = {}): void {
+  // Повторный клик по ссылке на тот же адрес (двойной клик) не перерисовывает экран.
+  if (!replace && path === location.pathname + location.search) return;
   if (replace) history.replaceState(null, '', path);
   else history.pushState(null, '', path);
   listeners.forEach((l) => l());

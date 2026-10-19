@@ -8,7 +8,12 @@ import { formatDateRange, formatKm, plural } from '../ui/format';
 import { trackSvg } from '../ui/track-svg';
 
 /** Экран «Мои походы». */
-export async function renderHikesList(root: HTMLElement, email: string | undefined): Promise<void> {
+/** isCurrent — экран ещё на месте; ответ, пришедший после ухода с экрана, не рисуем. */
+export async function renderHikesList(
+  root: HTMLElement,
+  email: string | undefined,
+  isCurrent: () => boolean = () => true,
+): Promise<void> {
   const list = h(
     'section',
     { class: 'hike-list', 'aria-live': 'polite' },
@@ -40,6 +45,7 @@ export async function renderHikesList(root: HTMLElement, email: string | undefin
   async function load(): Promise<void> {
     try {
       const hikes = await listHikes();
+      if (!isCurrent()) return;
       list.replaceChildren(
         ...(hikes.length ? hikes.map((hike) => hikeCard(hike, confirmDelete)) : [emptyState()]),
       );

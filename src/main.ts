@@ -22,6 +22,7 @@ function render(): void {
   cleanup?.();
   cleanup = null;
   const id = ++renderId;
+  const isCurrent = (): boolean => id === renderId;
 
   if (!session && !isPublic(route)) {
     navigate('/login', { replace: true });
@@ -37,7 +38,7 @@ function render(): void {
       renderLogin(app);
       break;
     case 'hikes':
-      void renderHikesList(app, session?.user.email);
+      void renderHikesList(app, session?.user.email, isCurrent);
       break;
     case 'newHike':
       renderNewHike(app);
@@ -45,9 +46,9 @@ function render(): void {
     case 'hike':
       // Экран с картой грузится отдельно: MapLibre тяжёлый, вход и список без него быстрее.
       void import('./pages/hike-view')
-        .then(({ renderHikeView }) => renderHikeView(app, route.id))
+        .then(({ renderHikeView }) => renderHikeView(app, route.id, isCurrent))
         .then((done) => {
-          if (id === renderId) cleanup = done;
+          if (isCurrent()) cleanup = done;
           else done();
         });
       break;

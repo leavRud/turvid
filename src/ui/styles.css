@@ -24,7 +24,8 @@
   --color-arrow: #2f6f4f;
   --color-arrow-stroke: #ffffff;
   --color-strip-bg: #e9ebe6;
-  --color-strip-day: #dfe4dc;
+  --color-strip-daylight: #f1efdd;
+  --color-strip-night: #2c3557;
   --color-strip-stop: rgb(0 0 0 / 14%);
   --color-strip-profile: #b9cfc0;
   --color-speed-0: #b8bdb9;
@@ -79,7 +80,8 @@
     --color-arrow: #6fbf8e;
     --color-arrow-stroke: #0f1a14;
     --color-strip-bg: #1d2320;
-    --color-strip-day: #252d29;
+    --color-strip-daylight: #3b4536;
+    --color-strip-night: #0b0e1a;
     --color-strip-stop: rgb(255 255 255 / 16%);
     --color-strip-profile: #35503f;
     --color-speed-0: #4a524e;
@@ -706,9 +708,26 @@ h2 {
   gap: var(--space-1);
 }
 
+.strip-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .strip-modes {
   display: flex;
   gap: var(--space-1);
+}
+
+.strip-zoom {
+  min-width: var(--tap);
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+.strip-zoom:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .strip-mode {
@@ -753,8 +772,16 @@ h2 {
   height: 100%;
 }
 
-.strip-day {
-  fill: var(--color-strip-day);
+.strip-daylight {
+  fill: var(--color-strip-daylight);
+}
+
+.strip-night {
+  fill: var(--color-strip-night);
+}
+
+.strip-night-stop {
+  stop-color: var(--color-strip-night);
 }
 
 .strip-stop {
@@ -766,7 +793,11 @@ h2 {
 }
 
 .strip-tick {
-  fill: var(--color-muted);
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 10px;
+  background: var(--color-muted);
 }
 
 .speed-0 {
@@ -801,14 +832,13 @@ h2 {
   white-space: nowrap;
 }
 
+/* Подпись дня на плашке: читается и на светлом дне, и на тёмной ночи. */
 .strip-label-day {
-  padding-left: 4px;
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: var(--radius);
+  background: var(--color-surface);
   color: var(--color-text);
-}
-
-.strip-label-stop {
-  top: 22px;
-  transform: translateX(-50%);
 }
 
 .strip-label-km {
@@ -858,4 +888,10 @@ h2 {
 
 .hike-card-link:hover {
   text-decoration: underline;
+}
+
+.map-error {
+  margin: 0;
+  padding: var(--space-4) var(--space-3);
+  color: var(--color-error);
 }
