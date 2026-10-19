@@ -17,6 +17,7 @@ import { splitDays } from '../track/days';
 import { nearestOnTrack } from '../track/nearest';
 import type { Point, TrackData } from '../types';
 import { h } from '../ui/dom';
+import { followStep } from './follow';
 import { followTheme, mapStyleUrl } from './style';
 import { MEDIA_DRAG_TYPE } from '../ui/drag';
 
@@ -30,8 +31,6 @@ export const DRAG_WINDOW_M = 1000;
  * В ТЗ было 50 м, но на общем виде это доля пикселя; решили считать в пикселях (раздел 9 ТЗ).
  */
 export const DRAG_MAX_OFFSET_PX = 30;
-/** Стрелка ближе к краю карты, чем эта доля, — карта подтягивается. */
-const FOLLOW_MARGIN = 0.2;
 /** Долгое нажатие на карту, мс. */
 const LONG_PRESS_MS = 600;
 /** Палец сдвинулся больше — это уже не долгое нажатие и не клик, px. */
@@ -152,7 +151,7 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
   function setFollow(on: boolean): void {
     follow = on;
     followControl.button.setAttribute('aria-pressed', String(on));
-    if (on) keepInView(true);
+    if (on) keepInView();
   }
 
   // Пользователь сам сдвинул карту — перестаём следовать.
@@ -242,22 +241,45 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
     badge.textContent = label(pos);
   }
 
-  function keepInView(force = false): void {
+  // «Следовать»: каждый кадр центр карты плавно подтягивается к стрелке, пока не догонит.
+  let followRaf = 0;
+  let followTs = 0;
+  let arrowDragging = false;
+  function followTick(ts: number): void {
+    followRaf = 0;
+    if (!follow || arrowDragging) return;
+    // Пока человек сам масштабирует колесом или щипком — не мешаем, догоним после.
+    if (map.isZooming()) {
+      followTs = 0;
+      followRaf = requestAnimationFrame(followTick);
+      return;
+    }
     const p = pointAt(track, store.get());
-    const { x, y } = map.project([p.lon, p.lat]);
-    const w = container.clientWidth;
-    const hgt = container.clientHeight;
-    const inside =
-      x > w * FOLLOW_MARGIN &&
-      x < w * (1 - FOLLOW_MARGIN) &&
-      y > hgt * FOLLOW_MARGIN &&
-      y < hgt * (1 - FOLLOW_MARGIN);
-    if (force || !inside) map.easeTo({ center: [p.lon, p.lat], duration: 400 });
+    const at = map.project([p.lon, p.lat]);
+    const halfW = container.clientWidth / 2;
+    const halfH = container.clientHeight / 2;
+    const dx = at.x - halfW;
+    const dy = at.y - halfH;
+    if (Math.hypot(dx, dy) < 0.5) {
+      followTs = 0;
+      return;
+    }
+    const dt = followTs ? Math.min((ts - followTs) / 1000, 0.1) : 1 / 60;
+    followTs = ts;
+    const [mx, my] = followStep(dx, dy, dt, halfW, halfH);
+    map.jumpTo({ center: map.unproject([halfW + mx, halfH + my]) });
+    followRaf = requestAnimationFrame(followTick);
+  }
+  function keepInView(): void {
+    if (followRaf || !follow) return;
+    followTs = 0;
+    followRaf = requestAnimationFrame(followTick);
   }
 
   // Перетаскивание стрелки: ближайшее место трека в окне ±1 км; у точки с фото — магнит 12 px.
   draggable(arrowEl, {
     onMove(e) {
+      arrowDragging = true;
       const [x, y] = local(e);
       const place = placeNear(x, y, store.get());
       if (!place) return;
@@ -272,7 +294,9 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
       store.set(hit === null ? place.pos : (magnetic[hit] as number), 'arrow');
     },
     onEnd() {
-      // позиция уже выставлена по ходу
+      // Отпустили стрелку — карта плавно возвращает её в центр.
+      arrowDragging = false;
+      keepInView();
     },
   });
 
@@ -379,7 +403,7 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
       placeArrow(pos);
       const passed = map.getSource('track-passed') as GeoJSONSource | undefined;
       passed?.setData(multiLine(passedLines(track, pos)));
-      if (follow && pendingSource !== 'arrow') keepInView();
+      if (pendingSource !== 'arrow') keepInView();
       pendingSource = null;
     });
   });
@@ -423,6 +447,7 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
     setPoints,
     destroy() {
       unsubscribe();
+      cancelAnimationFrame(followRaf);
       stopTheme();
       if (frame) cancelAnimationFrame(frame);
       map.remove();
