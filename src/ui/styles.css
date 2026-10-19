@@ -1,0 +1,187 @@
+/* Общие стили. Цвета и размеры — только через переменные. */
+
+:root {
+  --color-bg: #f6f5f1;
+  --color-surface: #ffffff;
+  --color-text: #1d2320;
+  --color-muted: #66706b;
+  --color-border: #dcdfdb;
+  --color-accent: #2f6f4f;
+  --color-accent-text: #ffffff;
+  --color-error: #b3261e;
+
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-size: 16px;
+  --font-size-small: 14px;
+  --radius: 10px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 40px;
+  --gutter: 16px;
+  --tap: 44px;
+  --page-max: 960px;
+  --page-narrow: 400px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #141816;
+    --color-surface: #1d2320;
+    --color-text: #e7ebe8;
+    --color-muted: #98a29d;
+    --color-border: #313a35;
+    --color-accent: #6fbf8e;
+    --color-accent-text: #0f1a14;
+    --color-error: #f2b8b5;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-width: 360px;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font);
+  font-size: var(--font-size);
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1,
+h2 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.page {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--space-4) var(--gutter);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.page-narrow {
+  max-width: var(--page-narrow);
+  padding-top: var(--space-5);
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.logo {
+  color: var(--color-accent);
+}
+
+.muted {
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.small {
+  font-size: var(--font-size-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn {
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  align-self: flex-start;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.login-form input {
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.login-form .btn-primary {
+  align-self: stretch;
+}
+
+.status {
+  margin: 0;
+  min-height: 1.45em;
+}
+
+.status-error {
+  color: var(--color-error);
+}
+
+.hike-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.empty,
+.hike-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-3);
+}
+
+.empty p {
+  margin: 0 0 var(--space-1);
+}
