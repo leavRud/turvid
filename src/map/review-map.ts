@@ -5,9 +5,7 @@ import { pointAt } from '../player/position';
 import { splitDays } from '../track/days';
 import type { TrackData } from '../types';
 import { h } from '../ui/dom';
-
-const STYLE_LIGHT = 'https://tiles.openfreemap.org/styles/liberty';
-const STYLE_DARK = 'https://tiles.openfreemap.org/styles/dark';
+import { followTheme, mapStyleUrl } from './style';
 
 export interface ReviewMarker {
   pos: number;
@@ -27,10 +25,9 @@ export function createReviewMap(
   bbox: [number, number, number, number],
   onMarkerClick: (index: number) => void,
 ): ReviewMap {
-  const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
   const map = new MapLibreMap({
     container,
-    style: dark ? STYLE_DARK : STYLE_LIGHT,
+    style: mapStyleUrl(),
     bounds: [
       [bbox[0], bbox[1]],
       [bbox[2], bbox[3]],
@@ -43,7 +40,7 @@ export function createReviewMap(
   map.touchZoomRotate.disableRotation();
 
   const css = getComputedStyle(document.documentElement);
-  map.on('load', () => {
+  const stopTheme = followTheme(map, () => {
     const lines = splitDays(track.t, track.lat.length).map(({ start, end }) => {
       const line: [number, number][] = [];
       for (let i = start; i <= end; i++)
@@ -89,6 +86,7 @@ export function createReviewMap(
   return {
     setMarkers,
     destroy() {
+      stopTheme();
       map.remove();
     },
   };

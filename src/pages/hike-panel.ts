@@ -428,6 +428,8 @@ export function createPanel(ctx: PanelContext): Panel {
   const placeHereBtn = h('button', { type: 'button', class: 'btn btn-primary' }, 'Положить сюда');
 
   function renderTray(): void {
+    // Лоток неразобранных — только у владельца, по публичной ссылке его нет.
+    if (!ctx.editable) return;
     const items = ctx.unsorted();
     if (selectedTray && !items.some((m) => m.id === selectedTray)) selectedTray = null;
     placeHereBtn.textContent = `Положить сюда · ${formatKm(ctx.store.get())}`;
@@ -556,6 +558,7 @@ export function createPanel(ctx: PanelContext): Panel {
   }
 
   function refreshStorage(): void {
+    if (!ctx.editable) return;
     ctx
       .storage()
       .then(({ hikeBytes, totalBytes }) => {

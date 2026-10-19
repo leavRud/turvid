@@ -17,6 +17,7 @@ import { splitDays } from '../track/days';
 import { nearestOnTrack } from '../track/nearest';
 import type { Point, TrackData } from '../types';
 import { h } from '../ui/dom';
+import { followTheme, mapStyleUrl } from './style';
 import { MEDIA_DRAG_TYPE } from '../ui/drag';
 
 // Воркер MapLibre ищется по относительному адресу, который Vite при сборке теряет; отдаём его явно.
@@ -35,9 +36,6 @@ const FOLLOW_MARGIN = 0.2;
 const LONG_PRESS_MS = 600;
 /** Палец сдвинулся больше — это уже не долгое нажатие и не клик, px. */
 const MOVE_TOLERANCE_PX = 8;
-
-const STYLE_LIGHT = 'https://tiles.openfreemap.org/styles/liberty';
-const STYLE_DARK = 'https://tiles.openfreemap.org/styles/dark';
 
 type Coord = [number, number];
 
@@ -73,10 +71,6 @@ export interface HikeMap {
 
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
-
-function prefersDark(): boolean {
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
 }
 
 /** Трек по дням: ночь не рисуется перелётом. */
@@ -136,7 +130,7 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
   const { container, track, bbox, store, label } = opts;
   const map = new MapLibreMap({
     container,
-    style: prefersDark() ? STYLE_DARK : STYLE_LIGHT,
+    style: mapStyleUrl(),
     bounds: [
       [bbox[0], bbox[1]],
       [bbox[2], bbox[3]],
@@ -390,7 +384,8 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
     });
   });
 
-  map.on('load', () => {
+  // Слои трека — на каждой загрузке стиля: смена темы меняет стиль и стирает их.
+  const stopTheme = followTheme(map, () => {
     map.addSource('track-all', { type: 'geojson', data: multiLine(dayLines(track)) });
     map.addSource('track-passed', {
       type: 'geojson',
@@ -428,6 +423,7 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
     setPoints,
     destroy() {
       unsubscribe();
+      stopTheme();
       if (frame) cancelAnimationFrame(frame);
       map.remove();
     },

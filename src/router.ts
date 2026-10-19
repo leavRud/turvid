@@ -4,6 +4,8 @@ export type Route =
   | { name: 'hikes' }
   | { name: 'newHike' }
   | { name: 'hike'; id: string }
+  | { name: 'shared'; token: string }
+  | { name: 'stats' }
   | { name: 'login' }
   | { name: 'notFound'; path: string };
 
@@ -18,9 +20,13 @@ export function matchRoute(pathname: string): Route {
       return { name: 'newHike' };
     case '/login':
       return { name: 'login' };
+    case '/stats':
+      return { name: 'stats' };
     default: {
       const hike = /^\/hikes\/([0-9a-f-]{36})$/i.exec(path);
       if (hike?.[1]) return { name: 'hike', id: hike[1].toLowerCase() };
+      const shared = /^\/s\/([A-Za-z0-9_-]{22,64})$/.exec(path);
+      if (shared?.[1]) return { name: 'shared', token: shared[1] };
       return { name: 'notFound', path };
     }
   }
@@ -28,7 +34,7 @@ export function matchRoute(pathname: string): Route {
 
 /** Маршруты, доступные без входа. */
 export function isPublic(route: Route): boolean {
-  return route.name === 'login';
+  return route.name === 'login' || route.name === 'shared';
 }
 
 type Listener = () => void;

@@ -6,6 +6,9 @@ import { renderLogin } from './pages/login';
 import { renderNewHike } from './pages/new-hike';
 import { bindLinks, currentRoute, isPublic, navigate, onRouteChange } from './router';
 import { h } from './ui/dom';
+import { initTheme } from './ui/theme';
+
+initTheme();
 
 const root = document.getElementById('app');
 if (!root) throw new Error('Нет элемента #app');
@@ -47,6 +50,22 @@ function render(): void {
       // Экран с картой грузится отдельно: MapLibre тяжёлый, вход и список без него быстрее.
       void import('./pages/hike-view')
         .then(({ renderHikeView }) => renderHikeView(app, route.id, isCurrent))
+        .then((done) => {
+          if (isCurrent()) cleanup = done;
+          else done();
+        });
+      break;
+    case 'shared':
+      void import('./pages/shared-view')
+        .then(({ renderSharedHike }) => renderSharedHike(app, route.token, isCurrent))
+        .then((done) => {
+          if (isCurrent()) cleanup = done;
+          else done();
+        });
+      break;
+    case 'stats':
+      void import('./pages/stats')
+        .then(({ renderStats }) => renderStats(app, isCurrent))
         .then((done) => {
           if (isCurrent()) cleanup = done;
           else done();

@@ -37,7 +37,9 @@ import {
   formatTime,
   plural,
 } from '../ui/format';
+import { themeSwitcher } from '../ui/theme';
 import { isViewerOpen, openViewer } from '../ui/viewer';
+import { createHikeMenu } from './hike-menu';
 import { createPanel, type PlaceInfo, type UploadReport } from './hike-panel';
 import { isReviewOpen, openReview } from './photo-review';
 
@@ -170,14 +172,37 @@ export function mountHikeView(
       .join(' · ');
   };
   renderSummary();
+  const titleEl = h('h1', {}, hike.title);
+  document.title = `${hike.title} — Turvid`;
+  // По публичной ссылке: без «Мои походы» и без меню (раздел 7 ТЗ).
   const header = h(
     'header',
     { class: 'hike-head' },
-    h('a', { href: '/', class: 'btn btn-ghost btn-small', 'data-link': true }, '← Мои походы'),
-    h('h1', {}, hike.title),
+    h(
+      'div',
+      { class: 'hike-head-bar' },
+      editable
+        ? h('a', { href: '/', class: 'btn btn-ghost btn-small', 'data-link': true }, '← Мои походы')
+        : h('span', { class: 'muted small-text' }, 'Turvid · дневник похода'),
+      h(
+        'div',
+        { class: 'header-actions' },
+        themeSwitcher(),
+        editable
+          ? createHikeMenu(hike, {
+              onRename(title) {
+                titleEl.textContent = title;
+                document.title = `${title} — Turvid`;
+              },
+            })
+          : null,
+      ),
+    ),
+    titleEl,
     h('p', { class: 'muted' }, dates),
     summary,
   );
+  cleanups.push(() => (document.title = 'Turvid'));
 
   // Карта
   const mapBox = h('div', { class: 'hike-map' });

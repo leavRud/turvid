@@ -6,6 +6,13 @@
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Turvid</title>
+    <script>
+      // Тема до первой отрисовки, чтобы страница не мигала светлой (то же делает src/ui/theme.ts).
+      try {
+        var t = localStorage.getItem('turvid-theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app"></div>

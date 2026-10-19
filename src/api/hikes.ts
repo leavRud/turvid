@@ -138,3 +138,23 @@ export async function getHike(hikeId: string): Promise<HikeBundle | null> {
     media: await signMedia(media ?? []),
   };
 }
+
+export async function renameHike(hikeId: string, title: string): Promise<void> {
+  const { error } = await supabase.from('hikes').update({ title }).eq('id', hikeId);
+  if (error) throw error;
+}
+
+/** Включить (token) или выключить (null) публичную ссылку. */
+export async function setShareToken(hikeId: string, token: string | null): Promise<void> {
+  const { error } = await supabase.from('hikes').update({ share_token: token }).eq('id', hikeId);
+  if (error) throw error;
+}
+
+/** Ссылка на скачивание исходного файла трека (живёт минуту). */
+export async function sourceDownloadUrl(path: string, fileName: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(path, 60, { download: fileName });
+  if (error) throw error;
+  return data.signedUrl;
+}

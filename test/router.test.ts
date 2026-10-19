@@ -34,3 +34,17 @@ describe('isPublic', () => {
     expect(isPublic({ name: 'notFound', path: '/x' })).toBe(false);
   });
 });
+
+describe('публичная ссылка и статистика', () => {
+  it('/s/<token> — публичный маршрут', () => {
+    const token = 'RkTj12cCVLkLuPH3MsR1kp';
+    expect(matchRoute('/s/' + token)).toEqual({ name: 'shared', token });
+    expect(isPublic({ name: 'shared', token })).toBe(true);
+    expect(matchRoute('/s/short')).toEqual({ name: 'notFound', path: '/s/short' });
+  });
+
+  it('/stats — только после входа', () => {
+    expect(matchRoute('/stats')).toEqual({ name: 'stats' });
+    expect(isPublic({ name: 'stats' })).toBe(false);
+  });
+});

@@ -3,6 +3,8 @@ import { deleteHike, listHikes } from '../api/hikes';
 import { splitDays } from '../track/days';
 import type { HikeListItem } from '../types';
 import { h } from '../ui/dom';
+import { openDeleteHikeDialog } from '../ui/delete-dialog';
+import { themeSwitcher } from '../ui/theme';
 import { errorText } from '../ui/errors';
 import { formatDateRange, formatKm, plural } from '../ui/format';
 import { trackSvg } from '../ui/track-svg';
@@ -34,10 +36,16 @@ export async function renderHikesList(
           'div',
           { class: 'header-actions' },
           email ? h('span', { class: 'muted small' }, email) : null,
+          themeSwitcher(),
           logout,
         ),
       ),
-      h('a', { href: '/new', class: 'btn btn-primary', 'data-link': true }, 'Новый поход'),
+      h(
+        'div',
+        { class: 'actions' },
+        h('a', { href: '/new', class: 'btn btn-primary', 'data-link': true }, 'Новый поход'),
+        h('a', { href: '/stats', class: 'btn btn-ghost', 'data-link': true }, 'Статистика'),
+      ),
       list,
     ),
   );
@@ -58,58 +66,10 @@ export async function renderHikesList(
 
   /** Удаление с подтверждением вводом названия. */
   function confirmDelete(hike: HikeListItem): void {
-    const input = h('input', {
-      type: 'text',
-      'aria-label': 'Название похода',
-      autocomplete: 'off',
+    openDeleteHikeDialog(hike.title, async () => {
+      await deleteHike(hike.id);
+      await load();
     });
-    const ok = h(
-      'button',
-      { type: 'submit', class: 'btn btn-danger', disabled: true },
-      'Удалить навсегда',
-    );
-    const cancel = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Отмена');
-    const status = h('p', { class: 'status', role: 'status' });
-    const form = h(
-      'form',
-      { class: 'stack', method: 'dialog' },
-      h('h2', {}, 'Удалить поход?'),
-      h(
-        'p',
-        {},
-        'Трек, точки и все фото удалятся без возможности восстановить. Чтобы подтвердить, введи название: ',
-        h('strong', {}, hike.title),
-      ),
-      input,
-      h('div', { class: 'actions' }, ok, cancel),
-      status,
-    );
-    const dialog = h('dialog', { class: 'dialog' }, form);
-
-    input.addEventListener('input', () => {
-      ok.disabled = input.value.trim() !== hike.title.trim();
-    });
-    cancel.addEventListener('click', () => dialog.close());
-    dialog.addEventListener('close', () => dialog.remove());
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      ok.disabled = true;
-      status.className = 'status';
-      status.textContent = 'Удаляю…';
-      try {
-        await deleteHike(hike.id);
-        dialog.close();
-        await load();
-      } catch (err) {
-        ok.disabled = false;
-        status.className = 'status status-error';
-        status.textContent = `Не получилось удалить: ${errorText(err)}`;
-      }
-    });
-
-    document.body.append(dialog);
-    dialog.showModal();
-    input.focus();
   }
 
   await load();

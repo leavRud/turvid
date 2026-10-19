@@ -62,8 +62,9 @@
   --page-narrow: 400px;
 }
 
+/* Тёмная тема: по системе, если не выбрана светлая явно, или по выбору (переключатель). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --color-bg: #141816;
     --color-surface: #1d2320;
     --color-text: #e7ebe8;
@@ -95,6 +96,39 @@
     --color-speed-2: #4f8e5d;
     --color-speed-3: #6fbf8e;
   }
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #141816;
+  --color-surface: #1d2320;
+  --color-text: #e7ebe8;
+  --color-muted: #98a29d;
+  --color-border: #313a35;
+  --color-accent: #6fbf8e;
+  --color-accent-text: #0f1a14;
+  --color-error: #f2b8b5;
+  --color-warning-bg: #3a3014;
+  --color-warning-text: #f3d98b;
+  --color-danger: #e5726a;
+  --color-danger-text: #1a0e0d;
+  --color-day-0: #6fbf8e;
+  --color-day-1: #f0a06a;
+  --color-day-2: #86aef0;
+  --color-day-3: #c897e0;
+  --color-track-muted: #7d8a83;
+  --color-track-casing: #141816;
+  --color-point: #f0a06a;
+  --color-arrow: #6fbf8e;
+  --color-arrow-stroke: #0f1a14;
+  --color-strip-bg: #1d2320;
+  --color-strip-daylight: #3b4536;
+  --color-strip-night: #0b0e1a;
+  --color-strip-stop: rgb(255 255 255 / 16%);
+  --color-strip-profile: #35503f;
+  --color-speed-0: #4a524e;
+  --color-speed-1: #b8892f;
+  --color-speed-2: #4f8e5d;
+  --color-speed-3: #6fbf8e;
 }
 
 *,
@@ -1391,4 +1425,136 @@ body.review-open {
 
 .review-marker.existing {
   background: var(--color-accent);
+}
+
+/* Этап 6: тема, меню похода, статистика */
+
+.theme-select {
+  min-height: var(--tap);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-small);
+}
+
+.hike-head-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.hike-menu {
+  position: relative;
+}
+
+.hike-menu summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.hike-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.hike-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-1));
+  z-index: 50;
+  width: min(360px, calc(100vw - 2 * var(--gutter)));
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px var(--color-backdrop);
+}
+
+.hike-menu-panel p {
+  margin: 0;
+}
+
+.menu-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.menu-row .field,
+.menu-row > input {
+  flex: 1;
+  min-width: 0;
+}
+
+.menu-row input {
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.stats-page .stats {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+.month-bars {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.month-bars .bar {
+  fill: var(--color-accent);
+}
+
+.month-bars .bar-value,
+.month-bars .bar-month {
+  fill: var(--color-muted);
+  font-size: 13px;
+  text-anchor: middle;
+}
+
+.month-bars .bar-value {
+  fill: var(--color-text);
+  font-weight: 600;
+}
+
+.month-bars .bar-axis {
+  stroke: var(--color-border);
+}
+
+.records {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.records dt {
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.records dd {
+  margin: 0;
+}
+
+.records a {
+  color: var(--color-accent);
+}
+
+.stats-map {
+  height: 50vh;
+  min-height: 280px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
 }
