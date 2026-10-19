@@ -198,3 +198,14 @@ export function followView(view: View, x: number, margin = 0.1): View {
   if (x > view.b - m) return clampView(x + m - w, w);
   return view;
 }
+
+/**
+ * Прокрутка у края при перетаскивании ползунка: f — палец, доля ширины полосы (может выйти
+ * за 0..1), zone — ширина зоны у края в долях. −1..0 — влево, 0..1 — вправо, сильнее у самого края.
+ */
+export function edgeScroll(f: number, zone: number): number {
+  if (zone <= 0) return 0;
+  if (f < zone) return -Math.min((zone - f) / zone, 1);
+  if (f > 1 - zone) return Math.min((f - (1 - zone)) / zone, 1);
+  return 0;
+}

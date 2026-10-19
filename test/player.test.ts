@@ -20,6 +20,7 @@ import {
   trackLength,
 } from '../src/player/position';
 import {
+  edgeScroll,
   followView,
   MIN_VIEW,
   skyStops,
@@ -323,5 +324,16 @@ describe('проигрывание по времени', () => {
     // 31,4 км за 6 ч 45 мин в движении → ~1,29 м/с → ~387 с похода за секунду.
     expect(timeRate(31_438, 24_294)).toBeCloseTo(BASE_SPEED_MPS / (31_438 / 24_294));
     expect(timeRate(1000, null)).toBe(300);
+  });
+});
+
+describe('прокрутка у края', () => {
+  it('в середине — стоит, у краёв — едет, сильнее у самого края', () => {
+    expect(edgeScroll(0.5, 0.1)).toBe(0);
+    expect(edgeScroll(0.05, 0.1)).toBeCloseTo(-0.5);
+    expect(edgeScroll(0, 0.1)).toBe(-1);
+    expect(edgeScroll(-0.3, 0.1)).toBe(-1);
+    expect(edgeScroll(0.95, 0.1)).toBeCloseTo(0.5);
+    expect(edgeScroll(1.2, 0.1)).toBe(1);
   });
 });

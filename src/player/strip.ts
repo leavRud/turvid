@@ -10,6 +10,7 @@ import { distanceAxis, timeAxis, type Axis, type TimeAxis } from './axis';
 import { MAGNET_PX, magnetTarget } from './magnet';
 import type { PositionStore } from './store';
 import {
+  edgeScroll,
   followView,
   skyStops,
   panView,
@@ -28,6 +29,10 @@ const VB_W = 1000;
 const VB_H = 100;
 /** Подписи ближе этого не показываем — налезут друг на друга, px. */
 const LABEL_MIN_GAP_PX = 72;
+/** Зона у края полосы, где ползунок прокручивает приближенную полосу, px. */
+const EDGE_ZONE_PX = 32;
+/** Скорость прокрутки у самого края: столько ширин окна в секунду. */
+const EDGE_SPEED = 0.8;
 /** Во сколько раз меняет масштаб кнопка «+» / «−». */
 const ZOOM_STEP = 2;
 
@@ -340,6 +345,7 @@ export function createStrip(opts: StripOptions): Strip {
   slider.addEventListener('pointerdown', (e) => {
     pointers.set(e.pointerId, e.clientX);
     slider.setPointerCapture(e.pointerId);
+    lastClientX = e.clientX;
     if (pointers.size === 2) {
       const [x1, x2] = [...pointers.values()] as [number, number];
       dragging = false;
@@ -358,7 +364,9 @@ export function createStrip(opts: StripOptions): Strip {
       const dist = Math.abs(x2 - x1) || 1;
       setView(zoomView(pinch.view, pinch.dist / dist, pinch.at));
     } else if (dragging) {
+      lastClientX = e.clientX;
       fromPointer(e.clientX);
+      edgeCheck();
     }
   });
   const end = (e: PointerEvent): void => {
@@ -367,6 +375,36 @@ export function createStrip(opts: StripOptions): Strip {
     if (pointers.size < 2) pinch = null;
     if (!pointers.size) dragging = false;
   };
+
+  // Ползунок у края приближенной полосы — полоса сама едет дальше, можно листать.
+  let lastClientX = 0;
+  let edgeRaf = 0;
+  let edgeTs = 0;
+  function edgeIntensity(): number {
+    const r = slider.getBoundingClientRect();
+    if (!r.width) return 0;
+    return edgeScroll((lastClientX - r.left) / r.width, EDGE_ZONE_PX / r.width);
+  }
+  function edgeCheck(): void {
+    if (edgeRaf || view.b - view.a >= 1 || edgeIntensity() === 0) return;
+    edgeTs = 0;
+    edgeRaf = requestAnimationFrame(edgeFrame);
+  }
+  function edgeFrame(ts: number): void {
+    edgeRaf = 0;
+    const k = edgeIntensity();
+    if (!dragging || k === 0) return;
+    const dt = edgeTs ? Math.min((ts - edgeTs) / 1000, 0.1) : 0;
+    edgeTs = ts;
+    const next = panView(view, k * EDGE_SPEED * (view.b - view.a) * dt);
+    if (next.a !== view.a) {
+      setView(next);
+      fromPointer(lastClientX);
+    } else if (dt > 0) {
+      return; // упёрлись в начало или конец
+    }
+    edgeRaf = requestAnimationFrame(edgeFrame);
+  }
   slider.addEventListener('pointerup', end);
   slider.addEventListener('pointercancel', end);
 
@@ -422,6 +460,7 @@ export function createStrip(opts: StripOptions): Strip {
     destroy() {
       unsubscribe();
       resize.disconnect();
+      cancelAnimationFrame(edgeRaf);
     },
   };
 }
