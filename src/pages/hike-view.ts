@@ -41,6 +41,7 @@ import { createSheet, SHEET_PEEK_PX } from '../ui/sheet';
 import { themeSwitcher } from '../ui/theme';
 import { isViewerOpen, openViewer } from '../ui/viewer';
 import { createHikeMenu } from './hike-menu';
+import { createHikeTitle } from './hike-title';
 import { createPanel, type PlaceInfo, type UploadReport } from './hike-panel';
 import { isReviewOpen, openReview } from './photo-review';
 
@@ -173,7 +174,10 @@ export function mountHikeView(
       .join(' · ');
   };
   renderSummary();
-  const titleEl = h('h1', {}, hike.title);
+  // Название с кнопкой ✎ (у владельца).
+  const titleBox = createHikeTitle(hike.id, hike.title, editable, (title) => {
+    document.title = `${title} — Turvid`;
+  });
   document.title = `${hike.title} — Turvid`;
   // По публичной ссылке: без «Мои походы» и без меню (раздел 7 ТЗ).
   const header = h(
@@ -189,17 +193,10 @@ export function mountHikeView(
         'div',
         { class: 'header-actions' },
         themeSwitcher(),
-        editable
-          ? createHikeMenu(hike, {
-              onRename(title) {
-                titleEl.textContent = title;
-                document.title = `${title} — Turvid`;
-              },
-            })
-          : null,
+        editable ? createHikeMenu(hike, { title: () => titleBox.title() }) : null,
       ),
     ),
-    titleEl,
+    titleBox.element,
     h('p', { class: 'muted' }, dates),
     summary,
   );

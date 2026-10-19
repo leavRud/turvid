@@ -93,11 +93,11 @@ export function createPanel(ctx: PanelContext): Panel {
     ? h(
         'div',
         { class: 'stack upload-all' },
-        h('label', { class: 'btn btn-primary' }, 'Загрузить фото в поход', autoInput),
+        h('label', { class: 'btn btn-primary' }, 'Загрузить фото и видео в поход', autoInput),
         h(
           'p',
           { class: 'muted small-text' },
-          'Фото сами встанут на маршрут по времени и месту съёмки — перед сохранением можно поправить.',
+          'Фото и видео сами встанут на маршрут по времени и месту съёмки — перед сохранением можно поправить. Видео — MP4, MOV или WebM до 50 МБ.',
         ),
       )
     : null;
@@ -244,7 +244,7 @@ export function createPanel(ctx: PanelContext): Panel {
       accept: 'image/*,video/*,.heic,.heif',
       class: 'visually-hidden',
     });
-    const add = h('label', { class: 'btn btn-primary' }, 'Добавить фото', input);
+    const add = h('label', { class: 'btn btn-primary' }, 'Добавить фото или видео', input);
     const edit = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Изменить');
     const del = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Удалить точку');
 

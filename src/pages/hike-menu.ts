@@ -1,6 +1,6 @@
-// Меню похода: переименовать, поделиться, скачать исходный файл, удалить.
+// Меню похода: поделиться, скачать исходный файл, удалить. Название правится кнопкой ✎ в шапке.
 
-import { deleteHike, renameHike, setShareToken, sourceDownloadUrl } from '../api/hikes';
+import { deleteHike, setShareToken, sourceDownloadUrl } from '../api/hikes';
 import { newShareToken, shareUrl } from '../api/share';
 import { navigate } from '../router';
 import type { Hike } from '../types';
@@ -9,7 +9,8 @@ import { h } from '../ui/dom';
 import { errorText } from '../ui/errors';
 
 export interface MenuHandlers {
-  onRename(title: string): void;
+  /** Текущее название — для имени скачанного файла и подтверждения удаления. */
+  title(): string;
 }
 
 /** Копирует текст; если буфер обмена недоступен — выделяет поле, чтобы скопировать руками. */
@@ -25,45 +26,12 @@ async function copy(text: string, field: HTMLInputElement): Promise<boolean> {
 }
 
 export function createHikeMenu(hike: Hike, handlers: MenuHandlers): HTMLElement {
-  let title = hike.title;
   let token = hike.share_token;
   const status = h('p', { class: 'status', role: 'status' });
   const fail = (what: string, err: unknown): void => {
     status.className = 'status status-error';
     status.textContent = `${what}: ${errorText(err)}`;
   };
-
-  // Переименовать
-  const nameInput = h('input', {
-    type: 'text',
-    value: title,
-    maxlength: '120',
-    'aria-label': 'Название похода',
-  });
-  const nameSave = h('button', { type: 'submit', class: 'btn btn-ghost' }, 'Сохранить');
-  const nameForm = h(
-    'form',
-    { class: 'menu-row' },
-    h('label', { class: 'field' }, h('span', {}, 'Название'), nameInput),
-    nameSave,
-  );
-  nameForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const next = nameInput.value.trim();
-    if (!next || next === title) return;
-    nameSave.disabled = true;
-    try {
-      await renameHike(hike.id, next);
-      title = next;
-      handlers.onRename(next);
-      status.className = 'status';
-      status.textContent = 'Название сохранено.';
-    } catch (err) {
-      fail('Не получилось переименовать', err);
-    } finally {
-      nameSave.disabled = false;
-    }
-  });
 
   // Поделиться
   const shareToggle = h('input', { type: 'checkbox', checked: token !== null });
@@ -112,8 +80,8 @@ export function createHikeMenu(hike: Hike, handlers: MenuHandlers): HTMLElement 
     if (!hike.source_path) return;
     try {
       const ext = hike.source_path.split('.').pop() ?? 'gpx';
-      const url = await sourceDownloadUrl(hike.source_path, `${title}.${ext}`);
-      const a = h('a', { href: url, download: `${title}.${ext}` });
+      const url = await sourceDownloadUrl(hike.source_path, `${handlers.title()}.${ext}`);
+      const a = h('a', { href: url, download: `${handlers.title()}.${ext}` });
       document.body.append(a);
       a.click();
       a.remove();
@@ -125,7 +93,7 @@ export function createHikeMenu(hike: Hike, handlers: MenuHandlers): HTMLElement 
   // Удалить
   const remove = h('button', { type: 'button', class: 'btn btn-danger' }, 'Удалить поход');
   remove.addEventListener('click', () =>
-    openDeleteHikeDialog(title, async () => {
+    openDeleteHikeDialog(handlers.title(), async () => {
       await deleteHike(hike.id);
       navigate('/');
     }),
@@ -138,7 +106,6 @@ export function createHikeMenu(hike: Hike, handlers: MenuHandlers): HTMLElement 
     h(
       'div',
       { class: 'hike-menu-panel stack' },
-      nameForm,
       h(
         'div',
         { class: 'stack' },
