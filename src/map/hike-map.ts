@@ -10,6 +10,7 @@ import {
   type IControl,
 } from 'maplibre-gl';
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import { MAGNET_PX, magnetTarget } from '../player/magnet';
 import { bearingAt, pointAt } from '../player/position';
 import type { PositionStore } from '../player/store';
 import { splitDays } from '../track/days';
@@ -29,11 +30,22 @@ export const DRAG_WINDOW_M = 1000;
 export const DRAG_MAX_OFFSET_PX = 30;
 /** Стрелка ближе к краю карты, чем эта доля, — карта подтягивается. */
 const FOLLOW_MARGIN = 0.2;
+/** Долгое нажатие на карту, мс. */
+const LONG_PRESS_MS = 600;
+/** Палец сдвинулся больше — это уже не долгое нажатие и не клик, px. */
+const MOVE_TOLERANCE_PX = 8;
 
 const STYLE_LIGHT = 'https://tiles.openfreemap.org/styles/liberty';
 const STYLE_DARK = 'https://tiles.openfreemap.org/styles/dark';
 
 type Coord = [number, number];
+
+/** Место на треке. */
+export interface TrackPlace {
+  pos: number;
+  lat: number;
+  lon: number;
+}
 
 export interface HikeMapOptions {
   container: HTMLElement;
@@ -43,9 +55,16 @@ export interface HikeMapOptions {
   store: PositionStore;
   /** Текст плашки у стрелки для позиции. */
   label: (pos: number) => string;
+  /** Позиции «магнитных» точек (с фото или заметкой) — к ним липнет стрелка. */
+  magnetic: () => number[];
+  /** Можно ли двигать точки и ставить новые долгим нажатием. */
+  editable: boolean;
+  onPointMove?: (point: Point, place: TrackPlace) => void;
+  onLongPress?: (place: TrackPlace) => void;
 }
 
 export interface HikeMap {
+  setPoints(points: Point[]): void;
   destroy(): void;
 }
 
@@ -110,14 +129,8 @@ class FollowControl implements IControl {
   }
 }
 
-export function createHikeMap({
-  container,
-  track,
-  bbox,
-  points,
-  store,
-  label,
-}: HikeMapOptions): HikeMap {
+export function createHikeMap(opts: HikeMapOptions): HikeMap {
+  const { container, track, bbox, store, label } = opts;
   const map = new MapLibreMap({
     container,
     style: prefersDark() ? STYLE_DARK : STYLE_LIGHT,
@@ -149,6 +162,68 @@ export function createHikeMap({
   map.on('dragstart', (e) => {
     if (e.originalEvent) setFollow(false);
   });
+
+  /** Экранные координаты события относительно карты. */
+  function local(e: PointerEvent): [number, number] {
+    const rect = container.getBoundingClientRect();
+    return [e.clientX - rect.left, e.clientY - rect.top];
+  }
+
+  /** Ближайшее место трека к экранной точке в окне вокруг `around`; null — дальше 30 px. */
+  function placeNear(x: number, y: number, around: number | null): TrackPlace | null {
+    const ll = map.unproject([x, y]);
+    const near = nearestOnTrack(
+      track,
+      ll.lat,
+      ll.lng,
+      around === null ? undefined : { from: around - DRAG_WINDOW_M, to: around + DRAG_WINDOW_M },
+    );
+    if (!near) return null;
+    const p = map.project([near.lon, near.lat]);
+    if (around !== null && Math.hypot(p.x - x, p.y - y) > DRAG_MAX_OFFSET_PX) return null;
+    return { pos: near.pos, lat: near.lat, lon: near.lon };
+  }
+
+  /** Тащить элемент пальцем: нажатие не уходит карте, движение — в `onMove`. */
+  function draggable(
+    el: HTMLElement,
+    handlers: { onMove: (e: PointerEvent) => void; onEnd: (moved: boolean) => void },
+  ): void {
+    let start: [number, number] | null = null;
+    let moved = false;
+    const stop = (e: Event): void => e.stopPropagation();
+    el.addEventListener('mousedown', stop);
+    el.addEventListener('touchstart', stop, { passive: true });
+    el.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      start = [e.clientX, e.clientY];
+      moved = false;
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        // указатель уже отпущен
+      }
+      el.classList.add('dragging');
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!start) return;
+      if (!moved && Math.hypot(e.clientX - start[0], e.clientY - start[1]) < MOVE_TOLERANCE_PX) {
+        return;
+      }
+      moved = true;
+      handlers.onMove(e);
+    });
+    const end = (e: PointerEvent): void => {
+      if (!start) return;
+      start = null;
+      el.classList.remove('dragging');
+      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      handlers.onEnd(moved);
+    };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
 
   // Стрелка с плашкой
   const arrowIcon = h('div', { class: 'map-arrow-icon' });
@@ -183,41 +258,99 @@ export function createHikeMap({
     if (force || !inside) map.easeTo({ center: [p.lon, p.lat], duration: 400 });
   }
 
-  // Перетаскивание стрелки мышью или пальцем: ближайшее место трека в окне ±1 км.
-  let dragging = false;
-  const stop = (e: Event): void => e.stopPropagation();
-  arrowEl.addEventListener('mousedown', stop);
-  arrowEl.addEventListener('touchstart', stop, { passive: true });
-  arrowEl.addEventListener('pointerdown', (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    dragging = true;
-    arrowEl.setPointerCapture(e.pointerId);
-    arrowEl.classList.add('dragging');
+  // Перетаскивание стрелки: ближайшее место трека в окне ±1 км; у точки с фото — магнит 12 px.
+  draggable(arrowEl, {
+    onMove(e) {
+      const [x, y] = local(e);
+      const place = placeNear(x, y, store.get());
+      if (!place) return;
+      const here = map.project([place.lon, place.lat]);
+      const magnetic = opts.magnetic();
+      const screen = magnetic.map((pos) => {
+        const p = pointAt(track, pos);
+        const s = map.project([p.lon, p.lat]);
+        return Math.hypot(s.x - here.x, s.y - here.y);
+      });
+      const hit = magnetTarget(0, screen, MAGNET_PX);
+      store.set(hit === null ? place.pos : (magnetic[hit] as number), 'arrow');
+    },
+    onEnd() {
+      // позиция уже выставлена по ходу
+    },
   });
-  arrowEl.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    const rect = container.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const ll = map.unproject([cx, cy]);
-    const pos = store.get();
-    const near = nearestOnTrack(track, ll.lat, ll.lng, {
-      from: pos - DRAG_WINDOW_M,
-      to: pos + DRAG_WINDOW_M,
+
+  // Точки — маркеры: клик ставит стрелку на точку, перетаскивание двигает точку по треку.
+  let pointMarkers: Marker[] = [];
+  function setPoints(points: Point[]): void {
+    pointMarkers.forEach((m) => m.remove());
+    pointMarkers = points.map((point) => {
+      const el = h('div', {
+        class: 'map-point',
+        role: 'button',
+        tabindex: '0',
+        'aria-label': point.title || 'Точка',
+        title: point.title,
+      });
+      const m = new Marker({ element: el, anchor: 'center' }).setLngLat([point.lon, point.lat]);
+      let moving: TrackPlace | null = null;
+      draggable(el, {
+        onMove(e) {
+          if (!opts.editable) return;
+          const [x, y] = local(e);
+          const place = placeNear(x, y, moving?.pos ?? point.pos_m);
+          if (!place) return;
+          moving = place;
+          m.setLngLat([place.lon, place.lat]);
+        },
+        onEnd(moved) {
+          if (!moved) {
+            store.set(point.pos_m, 'list');
+            return;
+          }
+          if (moving && opts.onPointMove) opts.onPointMove(point, moving);
+          moving = null;
+        },
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          store.set(point.pos_m, 'list');
+        }
+      });
+      return m.addTo(map);
     });
-    if (!near) return;
-    const p = map.project([near.lon, near.lat]);
-    if (Math.hypot(p.x - cx, p.y - cy) <= DRAG_MAX_OFFSET_PX) store.set(near.pos, 'arrow');
-  });
-  const endDrag = (e: PointerEvent): void => {
-    if (!dragging) return;
-    dragging = false;
-    arrowEl.classList.remove('dragging');
-    if (arrowEl.hasPointerCapture(e.pointerId)) arrowEl.releasePointerCapture(e.pointerId);
-  };
-  arrowEl.addEventListener('pointerup', endDrag);
-  arrowEl.addEventListener('pointercancel', endDrag);
+  }
+
+  // Долгое нажатие на карту — новая точка в ближайшем месте трека.
+  if (opts.editable && opts.onLongPress) {
+    const canvasBox = map.getCanvasContainer();
+    let timer = 0;
+    let start: [number, number] | null = null;
+    const cancel = (): void => {
+      clearTimeout(timer);
+      start = null;
+    };
+    canvasBox.addEventListener('pointerdown', (e) => {
+      if (e.target !== map.getCanvas() || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      start = [e.clientX, e.clientY];
+      const [x, y] = local(e);
+      timer = window.setTimeout(() => {
+        start = null;
+        const place = placeNear(x, y, null);
+        if (place) opts.onLongPress?.(place);
+      }, LONG_PRESS_MS);
+    });
+    canvasBox.addEventListener('pointermove', (e) => {
+      if (start && Math.hypot(e.clientX - start[0], e.clientY - start[1]) > MOVE_TOLERANCE_PX) {
+        cancel();
+      }
+    });
+    canvasBox.addEventListener('pointerup', cancel);
+    canvasBox.addEventListener('pointercancel', cancel);
+    // Долгое нажатие на телефоне не должно открывать меню браузера.
+    canvasBox.addEventListener('contextmenu', (e) => e.preventDefault());
+    map.on('movestart', cancel);
+  }
 
   // Обновления позиции — не чаще кадра.
   let frame = 0;
@@ -237,22 +370,10 @@ export function createHikeMap({
   });
 
   map.on('load', () => {
-    const accent = cssVar('--color-accent');
     map.addSource('track-all', { type: 'geojson', data: multiLine(dayLines(track)) });
     map.addSource('track-passed', {
       type: 'geojson',
       data: multiLine(passedLines(track, store.get())),
-    });
-    map.addSource('points', {
-      type: 'geojson',
-      data: {
-        type: 'FeatureCollection',
-        features: points.map((p) => ({
-          type: 'Feature',
-          properties: { pos: p.pos_m, title: p.title },
-          geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-        })),
-      },
     });
     const line = { 'line-join': 'round', 'line-cap': 'round' } as const;
     map.addLayer({
@@ -274,31 +395,16 @@ export function createHikeMap({
       type: 'line',
       source: 'track-passed',
       layout: line,
-      paint: { 'line-color': accent, 'line-width': 5 },
+      paint: { 'line-color': cssVar('--color-accent'), 'line-width': 5 },
     });
-    map.addLayer({
-      id: 'points',
-      type: 'circle',
-      source: 'points',
-      paint: {
-        'circle-radius': 7,
-        'circle-color': cssVar('--color-point'),
-        'circle-stroke-color': cssVar('--color-surface'),
-        'circle-stroke-width': 2,
-      },
-    });
-    map.on('click', 'points', (e) => {
-      const pos = e.features?.[0]?.properties?.['pos'];
-      if (typeof pos === 'number') store.set(pos, 'list');
-    });
-    map.on('mouseenter', 'points', () => (map.getCanvas().style.cursor = 'pointer'));
-    map.on('mouseleave', 'points', () => (map.getCanvas().style.cursor = ''));
   });
 
+  setPoints(opts.points);
   placeArrow(store.get());
   marker.addTo(map);
 
   return {
+    setPoints,
     destroy() {
       unsubscribe();
       if (frame) cancelAnimationFrame(frame);

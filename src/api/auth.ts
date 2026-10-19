@@ -26,3 +26,11 @@ export function onAuthChange(cb: (session: Session | null) => void): () => void 
   const { data } = supabase.auth.onAuthStateChange((_event, session) => cb(session));
   return () => data.subscription.unsubscribe();
 }
+
+/** id вошедшего пользователя — первая папка в путях Storage. */
+export async function currentUserId(): Promise<string> {
+  const session = await getSession();
+  const id = session?.user.id;
+  if (!id) throw new Error('Нужно войти');
+  return id;
+}

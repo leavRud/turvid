@@ -1,6 +1,8 @@
 import type { ProcessedTrack } from '../track/process';
-import type { Hike, HikeBundle, HikeListItem, Point, TrackData } from '../types';
+import type { Hike, HikeBundle, HikeListItem, Media, Point, TrackData } from '../types';
 import { supabase } from './client';
+import { currentUserId } from './auth';
+import { signMedia } from './media';
 
 const BUCKET = 'media';
 
@@ -9,14 +11,6 @@ const LIST_COLUMNS =
 
 interface ListRow extends Omit<HikeListItem, 'photos'> {
   media: { count: number }[] | null;
-}
-
-async function currentUserId(): Promise<string> {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-  const id = data.session?.user.id;
-  if (!id) throw new Error('Нужно войти');
-  return id;
 }
 
 /** Походы текущего пользователя, от новых к старым, с упрощённым треком для мини-карты. */
@@ -129,18 +123,18 @@ export async function deleteHike(hikeId: string): Promise<void> {
 export async function getHike(hikeId: string): Promise<HikeBundle | null> {
   const { data, error } = await supabase
     .from('hikes')
-    .select('*, points(*), media(count)')
+    .select('*, points(*), media(*)')
     .eq('id', hikeId)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
   const { points, media, ...hike } = data as unknown as Hike & {
     points: Point[] | null;
-    media: { count: number }[] | null;
+    media: Media[] | null;
   };
   return {
     hike,
     points: [...(points ?? [])].sort((a, b) => a.pos_m - b.pos_m),
-    photos: media?.[0]?.count ?? 0,
+    media: await signMedia(media ?? []),
   };
 }

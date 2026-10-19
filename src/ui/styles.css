@@ -37,6 +37,12 @@
   --strip-height: 64px;
   --panel-width: 320px;
   --arrow-size: 44px;
+  --point-size: 18px;
+  --thumb-size: 72px;
+  --color-viewer-bg: rgb(0 0 0 / 92%);
+  --color-viewer-text: #ffffff;
+  --color-viewer-control: rgb(255 255 255 / 16%);
+  --color-video-placeholder: #3a3f3c;
   --track-width: 2.5px;
   --minimap-size: 96px;
   --dialog-max: 440px;
@@ -890,4 +896,266 @@ h2 {
   margin: 0;
   padding: var(--space-4) var(--space-3);
   color: var(--color-error);
+}
+
+/* Точки на карте */
+
+.map-point {
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.map-point::before {
+  content: '';
+  width: var(--point-size);
+  height: var(--point-size);
+  border-radius: 50%;
+  background: var(--color-point);
+  border: 3px solid var(--color-surface);
+  box-shadow: 0 1px 3px var(--color-backdrop);
+}
+
+.map-point.dragging {
+  cursor: grabbing;
+}
+
+.map-point.dragging::before {
+  transform: scale(1.25);
+}
+
+/* Карточка точки */
+
+.panel-body {
+  margin-bottom: var(--space-3);
+}
+
+.point-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.point-card p {
+  margin: 0;
+}
+
+.point-card-title {
+  font-size: 1.2em;
+  overflow-wrap: anywhere;
+}
+
+.point-description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.point-main,
+.thumb {
+  position: relative;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--color-border);
+  cursor: zoom-in;
+}
+
+.point-main img {
+  display: block;
+  width: 100%;
+  max-height: 50vh;
+  object-fit: cover;
+}
+
+.thumbs {
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+}
+
+.thumb {
+  flex: none;
+  width: var(--thumb-size);
+  height: var(--thumb-size);
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-badge {
+  position: absolute;
+  left: var(--space-1);
+  bottom: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: 4px;
+  background: var(--color-backdrop);
+  color: var(--color-viewer-text);
+  font-size: 11px;
+}
+
+.upload-progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--color-accent);
+}
+
+.status-line {
+  display: block;
+}
+
+.point-item[aria-current='true'] {
+  border-color: var(--color-accent);
+}
+
+/* Правка точки */
+
+.point-edit textarea {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.point-edit input {
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.edit-media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.edit-thumb {
+  width: calc(var(--thumb-size) + 24px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.edit-thumb img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+
+.edit-thumb-actions {
+  display: flex;
+  justify-content: space-between;
+}
+
+.mini-btn {
+  min-width: 30px;
+  min-height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mini-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Полноэкранный просмотр */
+
+body.viewer-open {
+  overflow: hidden;
+}
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--color-viewer-bg);
+  color: var(--color-viewer-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer-stage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: pan-y;
+}
+
+.viewer-media {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.viewer-nav,
+.viewer-close {
+  position: absolute;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-viewer-control);
+  color: var(--color-viewer-text);
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.viewer-prev {
+  left: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.viewer-next {
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.viewer-close {
+  top: var(--space-2);
+  right: var(--space-2);
+  font-size: 20px;
+}
+
+.viewer-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--gutter);
+  background: linear-gradient(transparent, var(--color-viewer-bg));
+  pointer-events: none;
+}
+
+.viewer-caption {
+  margin: 0;
 }

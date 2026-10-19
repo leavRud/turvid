@@ -81,3 +81,21 @@ export function plural(n: number, forms: [string, string, string]): string {
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1];
   return forms[2];
 }
+
+/** «14,4 МБ», «820 КБ». */
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) {
+    return `${(bytes / 1024 ** 3).toLocaleString(LOCALE, { maximumFractionDigits: 2 })} ГБ`;
+  }
+  if (bytes >= 1024 ** 2) {
+    return `${(bytes / 1024 ** 2).toLocaleString(LOCALE, { maximumFractionDigits: 1 })} МБ`;
+  }
+  return `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+}
+
+/** «0:42», «12:05» — длительность видео. */
+export function formatClock(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}

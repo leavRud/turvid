@@ -7,6 +7,7 @@ import type { TrackData } from '../types';
 import { h } from '../ui/dom';
 import { formatKm, formatShortDate } from '../ui/format';
 import { distanceAxis, timeAxis, type Axis, type TimeAxis } from './axis';
+import { MAGNET_PX, magnetTarget } from './magnet';
 import type { PositionStore } from './store';
 import {
   followView,
@@ -42,6 +43,8 @@ export interface StripOptions {
   stops: Stop[];
   /** Позиции точек, м. */
   points: number[];
+  /** Позиции «магнитных» точек (с фото или заметкой) — к ним липнет ползунок. */
+  magnetic: number[];
   modes: StripInfo;
   store: PositionStore;
   /** Начало трека, секунды Unix (для подписей дней и солнца); null — без времени. */
@@ -51,6 +54,8 @@ export interface StripOptions {
 
 export interface Strip {
   element: HTMLElement;
+  /** Точки поменялись (создали, сдвинули, удалили). */
+  setPoints(points: number[], magnetic: number[]): void;
   destroy(): void;
 }
 
@@ -90,6 +95,8 @@ export function createStrip(opts: StripOptions): Strip {
   let timeline: TimeAxis | null = null;
   /** Видимое окно оси: при масштабе ×1 — вся ось. */
   let view: View = { a: 0, b: 1 };
+  let points = opts.points;
+  let magnetic = opts.magnetic;
   /** Где стоит ползунок на оси: при перетаскивании — под пальцем, а не по позиции. */
   let thumbX = 0;
 
@@ -261,7 +268,7 @@ export function createStrip(opts: StripOptions): Strip {
       }
     }
 
-    for (const p of opts.points) {
+    for (const p of points) {
       const f = toLocal(axis.posToX(p));
       if (f < 0 || f > 1) continue;
       const mark = h('span', { class: 'strip-point' });
@@ -310,7 +317,22 @@ export function createStrip(opts: StripOptions): Strip {
   }
 
   function fromPointer(clientX: number): void {
-    thumbX = fromLocal(localX(clientX));
+    const f = localX(clientX);
+    // Магнит: ближе 12 px к точке с фото или заметкой — приклеиваемся к ней.
+    const width = slider.clientWidth || VB_W;
+    const hit = magnetTarget(
+      f * width,
+      magnetic.map((p) => toLocal(axis.posToX(p)) * width),
+      MAGNET_PX,
+    );
+    if (hit !== null) {
+      const pos = magnetic[hit] as number;
+      thumbX = axis.posToX(pos);
+      updateThumb();
+      store.set(pos, 'slider', null);
+      return;
+    }
+    thumbX = fromLocal(f);
     updateThumb();
     store.set(axis.xToPos(thumbX), 'slider', timeline ? timeline.xToTime(thumbX) : null);
   }
@@ -392,6 +414,11 @@ export function createStrip(opts: StripOptions): Strip {
   renderOverlay();
   return {
     element,
+    setPoints(nextPoints, nextMagnetic) {
+      points = nextPoints;
+      magnetic = nextMagnetic;
+      renderOverlay();
+    },
     destroy() {
       unsubscribe();
       resize.disconnect();

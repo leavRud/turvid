@@ -45,9 +45,33 @@ export interface Point {
   created_at: string;
 }
 
+/** Строка таблицы `media`: фото или видео похода. */
+export interface Media {
+  id: string;
+  hike_id: string;
+  /** null — неразобранное. */
+  point_id: string | null;
+  kind: 'photo' | 'video';
+  path: string;
+  thumb_path: string;
+  duration_s: number | null;
+  taken_at: string | null;
+  lat: number | null;
+  lon: number | null;
+  width: number;
+  height: number;
+  sort: number;
+}
+
+/** Медиа с подписанными ссылками (живут час). */
+export interface MediaItem extends Media {
+  url: string;
+  thumbUrl: string;
+}
+
 /** Всё, что нужно экрану просмотра похода. */
 export interface HikeBundle {
   hike: Hike;
   points: Point[];
-  photos: number;
+  media: MediaItem[];
 }
