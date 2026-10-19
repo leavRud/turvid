@@ -33,6 +33,8 @@ export interface PreparedMedia {
   durationS: number | null;
   /** Секунды Unix. */
   takenAt: number | null;
+  /** Время из имени файла — примерное. */
+  takenApprox: boolean;
   lat: number | null;
   lon: number | null;
 }
@@ -82,6 +84,7 @@ export async function uploadMedia(
       thumb_path: thumbPath,
       duration_s: m.durationS,
       taken_at: m.takenAt === null ? null : new Date(m.takenAt * 1000).toISOString(),
+      taken_approx: m.takenApprox,
       lat: m.lat,
       lon: m.lon,
       width: Math.round(m.width),
@@ -126,4 +129,10 @@ export async function storageUsage(hikeId: string): Promise<StorageUsage> {
   if (error) throw error;
   const row = (data as { hike_bytes: number; total_bytes: number }[] | null)?.[0];
   return { hikeBytes: Number(row?.hike_bytes ?? 0), totalBytes: Number(row?.total_bytes ?? 0) };
+}
+
+/** Переложить медиа в другую точку; null — в неразобранные. */
+export async function moveMedia(id: string, pointId: string | null, sort: number): Promise<void> {
+  const { error } = await supabase.from('media').update({ point_id: pointId, sort }).eq('id', id);
+  if (error) throw error;
 }

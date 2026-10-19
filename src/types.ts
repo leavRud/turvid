@@ -56,6 +56,8 @@ export interface Media {
   thumb_path: string;
   duration_s: number | null;
   taken_at: string | null;
+  /** Время взято из имени файла — примерное. */
+  taken_approx: boolean;
   lat: number | null;
   lon: number | null;
   width: number;

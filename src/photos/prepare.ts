@@ -1,9 +1,10 @@
-// Подготовка выбранного файла к загрузке: проверка, HEIC → JPEG, EXIF, сжатие или кадр видео.
+// Подготовка выбранного файла к загрузке: проверка, когда и где снято, HEIC → JPEG,
+// сжатие фото или кадр видео.
 
 import type { PreparedMedia } from '../api/media';
 import { compressImage } from './compress';
-import { readPhotoMeta } from './exif';
 import { classifyFile } from './files';
+import { readMediaMeta } from './meta';
 import { readVideo } from './video';
 
 export interface Prepared {
@@ -31,7 +32,16 @@ function canPlayHevc(): boolean {
 
 export async function prepareFile(file: File, hikeTimeZone: string): Promise<Prepared> {
   const kind = classifyFile(file);
-  if (kind.error) throw new MediaError(kind.error);
+  if (kind.error || !kind.kind) throw new MediaError(kind.error ?? `${file.name}: не тот формат`);
+
+  // Метаданные — из исходника, до сжатия (у сжатой копии их нет).
+  const meta = await readMediaMeta(file, kind.kind, hikeTimeZone);
+  const where = {
+    takenAt: meta.takenAt,
+    takenApprox: meta.approx,
+    lat: meta.lat,
+    lon: meta.lon,
+  };
 
   if (kind.kind === 'video') {
     const info = await readVideo(file);
@@ -51,16 +61,12 @@ export async function prepareFile(file: File, hikeTimeZone: string): Promise<Pre
         width: info.width,
         height: info.height,
         durationS: info.durationS,
-        takenAt: null,
-        lat: null,
-        lon: null,
+        ...where,
       },
       warning,
     };
   }
 
-  // EXIF — из исходника, до сжатия.
-  const meta = await readPhotoMeta(file, hikeTimeZone);
   let source: Blob = file;
   if (kind.heic) {
     // heic2any тяжёлый (~1,3 МБ), грузим только когда встретили HEIC.
@@ -78,9 +84,7 @@ export async function prepareFile(file: File, hikeTimeZone: string): Promise<Pre
       width: c.width,
       height: c.height,
       durationS: null,
-      takenAt: meta.takenAt,
-      lat: meta.lat,
-      lon: meta.lon,
+      ...where,
     },
     warning: null,
   };

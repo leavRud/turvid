@@ -4,6 +4,7 @@ import { POINT_DESCRIPTION_MAX, POINT_TITLE_MAX } from '../api/points';
 import type { PositionStore } from '../player/store';
 import type { MediaItem, Point } from '../types';
 import { h } from '../ui/dom';
+import { MEDIA_DRAG_TYPE } from '../ui/drag';
 import { errorText } from '../ui/errors';
 import { formatBytes, formatClock, formatKm } from '../ui/format';
 
@@ -33,8 +34,15 @@ export interface PanelContext {
   editable: boolean;
   points(): Point[];
   mediaOf(pointId: string): MediaItem[];
-  unsortedCount(): number;
+  /** Неразобранные фото (лоток). */
+  unsorted(): MediaItem[];
   describe(pos: number): PlaceInfo;
+  /** Загрузить фото в поход с автораскладкой и экраном проверки. */
+  autoUpload(files: File[]): void;
+  /** Положить фото из лотка на трек в текущее место. */
+  placeHere(media: MediaItem): Promise<void>;
+  removeMedia(media: MediaItem): Promise<void>;
+  openUnsorted(index: number): void;
   createPointHere(): Promise<Point>;
   savePoint(
     point: Point,
@@ -67,16 +75,46 @@ export function createPanel(ctx: PanelContext): Panel {
   const body = h('div', { class: 'panel-body' });
   const list = h('div', { class: 'point-list' });
   const storageLine = h('p', { class: 'muted small-text' });
-  const unsortedLine = h('p', { class: 'muted small-text' });
+  const tray = h('section', { class: 'tray' });
+
+  // Загрузка в поход целиком: фото сами раскладываются по маршруту, потом — экран проверки.
+  const autoInput = h('input', {
+    type: 'file',
+    multiple: true,
+    accept: 'image/*,video/*,.heic,.heif',
+    class: 'visually-hidden',
+  });
+  autoInput.addEventListener('change', () => {
+    const files = [...(autoInput.files ?? [])];
+    autoInput.value = '';
+    if (files.length) ctx.autoUpload(files);
+  });
+  const autoButton = ctx.editable
+    ? h(
+        'div',
+        { class: 'stack upload-all' },
+        h('label', { class: 'btn btn-primary' }, 'Загрузить фото в поход', autoInput),
+        h(
+          'p',
+          { class: 'muted small-text' },
+          'Фото сами встанут на маршрут по времени и месту съёмки — перед сохранением можно поправить.',
+        ),
+      )
+    : null;
+
   const element = h(
     'aside',
     { class: 'hike-panel' },
     body,
+    autoButton,
+    tray,
     h('h2', { class: 'section-title' }, 'Точки'),
     list,
-    unsortedLine,
     storageLine,
   );
+
+  /** Выбранное в лотке фото. */
+  let selectedTray: string | null = null;
 
   /** Что сейчас нарисовано в body: точка (id), правка точки или «между точками». */
   let shown: string | null = null;
@@ -384,9 +422,95 @@ export function createPanel(ctx: PanelContext): Panel {
     title.focus();
   }
 
+  /** Что сейчас нарисовано в списке и лотке — чтобы не пересобирать их на каждый кадр. */
+  let listKey = '';
+  let trayKey = '';
+  const placeHereBtn = h('button', { type: 'button', class: 'btn btn-primary' }, 'Положить сюда');
+
+  function renderTray(): void {
+    const items = ctx.unsorted();
+    if (selectedTray && !items.some((m) => m.id === selectedTray)) selectedTray = null;
+    placeHereBtn.textContent = `Положить сюда · ${formatKm(ctx.store.get())}`;
+    const key = `${items.map((m) => m.id).join(',')}|${selectedTray ?? ''}`;
+    if (key === trayKey) return;
+    trayKey = key;
+    if (!items.length) {
+      tray.replaceChildren();
+      return;
+    }
+    const status = h('p', { class: 'status', role: 'status' });
+    const selected = items.find((m) => m.id === selectedTray) ?? null;
+    const run = async (action: () => Promise<void>): Promise<void> => {
+      status.className = 'status';
+      status.textContent = 'Сохраняю…';
+      try {
+        await action();
+      } catch (err) {
+        status.className = 'status status-error';
+        status.textContent = errorText(err);
+      }
+    };
+    placeHereBtn.onclick = selected ? () => void run(() => ctx.placeHere(selected)) : null;
+    const open = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Открыть');
+    const del = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Удалить');
+    if (selected) {
+      open.addEventListener('click', () => ctx.openUnsorted(items.indexOf(selected)));
+      del.addEventListener('click', () => {
+        if (window.confirm('Удалить это фото насовсем?')) void run(() => ctx.removeMedia(selected));
+      });
+    }
+    tray.replaceChildren(
+      h('h2', { class: 'section-title' }, `Неразобранные (${items.length})`),
+      h(
+        'div',
+        { class: 'thumbs' },
+        ...items.map((m) => {
+          const b = h(
+            'button',
+            {
+              type: 'button',
+              class: 'thumb tray-thumb',
+              draggable: 'true',
+              'aria-pressed': String(m.id === selectedTray),
+              'aria-label': 'Выбрать фото',
+            },
+            h('img', { src: m.thumbUrl, alt: '', loading: 'lazy', draggable: 'false' }),
+          );
+          b.addEventListener('click', () => {
+            selectedTray = selectedTray === m.id ? null : m.id;
+            renderTray();
+          });
+          // На компьютере фото можно перетащить прямо на трек.
+          b.addEventListener('dragstart', (e) => {
+            e.dataTransfer?.setData(MEDIA_DRAG_TYPE, m.id);
+            if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+          });
+          return b;
+        }),
+      ),
+      selected
+        ? h('div', { class: 'actions' }, placeHereBtn, open, del)
+        : h(
+            'p',
+            { class: 'muted small-text' },
+            'Выбери фото и поставь стрелку на место — или перетащи фото на трек на карте.',
+          ),
+      status,
+    );
+  }
+
   function renderList(): void {
     const pos = ctx.store.get();
     const points = ctx.points();
+    renderTray();
+    const key = points
+      .map(
+        (p) =>
+          `${p.id}:${p.title}:${p.pos_m}:${ctx.mediaOf(p.id).length}:${Math.abs(p.pos_m - pos) < ON_POINT_M}`,
+      )
+      .join('|');
+    if (key === listKey) return;
+    listKey = key;
     list.replaceChildren(
       ...(points.length
         ? points.map((p) => {
@@ -410,10 +534,6 @@ export function createPanel(ctx: PanelContext): Panel {
           })
         : [h('p', { class: 'muted' }, 'Точек пока нет.')]),
     );
-    const unsorted = ctx.unsortedCount();
-    unsortedLine.textContent = unsorted
-      ? `Неразобранные фото: ${unsorted} (лоток — на этапе 5).`
-      : '';
   }
 
   /** force — перерисовать карточку, даже если точка та же (данные поменялись). */

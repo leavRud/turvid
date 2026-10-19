@@ -2,9 +2,10 @@
 // Точки и фото меняются на лету (этап 4): после каждого изменения обновляются карта, полоса и панель.
 
 import { getHike } from '../api/hikes';
-import { deleteMedia, reorderMedia, storageUsage, uploadMedia } from '../api/media';
+import { deleteMedia, moveMedia, reorderMedia, storageUsage, uploadMedia } from '../api/media';
 import { createPoint, deletePoint, updatePoint } from '../api/points';
 import { createHikeMap, type HikeMap } from '../map/hike-map';
+import { ATTACH_M, layoutMedia, type Placement } from '../photos/placement';
 import { MediaError, prepareFile, type Prepared } from '../photos/prepare';
 import { isNetworkError, runQueue } from '../photos/queue';
 import { isNight, timeAxis } from '../player/axis';
@@ -38,6 +39,7 @@ import {
 } from '../ui/format';
 import { isViewerOpen, openViewer } from '../ui/viewer';
 import { createPanel, type PlaceInfo, type UploadReport } from './hike-panel';
+import { isReviewOpen, openReview } from './photo-review';
 
 /** Как часто переписывать ?pos= в адресе, мс. */
 const URL_DEBOUNCE_MS = 300;
@@ -112,6 +114,8 @@ export function mountHikeView(
   };
   const mediaOf = (pointId: string): MediaItem[] =>
     media.filter((m) => m.point_id === pointId).sort((a, b) => a.sort - b.sort);
+  const unsortedMedia = (): MediaItem[] =>
+    media.filter((m) => m.point_id === null).sort((a, b) => a.sort - b.sort);
   const pointPos = (): number[] => points.map((p) => p.pos_m);
   const magneticPos = (): number[] => {
     const counts = new Map<string, number>();
@@ -217,11 +221,12 @@ export function mountHikeView(
   const controls = h('div', { class: 'player-controls' }, prevBtn, playBtn, speedBtn, nextBtn);
 
   // Подпись в просмотре: название точки и время съёмки.
-  const captionFor = (point: Point, m: MediaItem): string => {
-    const name = point.title || 'Точка без названия';
+  const captionFor = (point: Point | null, m: MediaItem): string => {
+    const name = point ? point.title || 'Точка без названия' : 'Неразобранное';
     if (!m.taken_at) return name;
     const sec = Date.parse(m.taken_at) / 1000;
-    return `${name} · ${formatShortDate(sec, tz)}, ${formatTime(sec, tz)}`;
+    const approx = m.taken_approx ? ' (время примерное)' : '';
+    return `${name} · ${formatShortDate(sec, tz)}, ${formatTime(sec, tz)}${approx}`;
   };
 
   // Панель точки
@@ -230,7 +235,21 @@ export function mountHikeView(
     editable,
     points: () => points,
     mediaOf,
-    unsortedCount: () => media.filter((m) => m.point_id === null).length,
+    unsorted: () => unsortedMedia(),
+    autoUpload: (files) => void autoUpload(files),
+    placeHere: (m) => placeMedia(m, store.get()),
+    async removeMedia(m) {
+      await deleteMedia(m);
+      media = media.filter((x) => x.id !== m.id);
+      dataChanged();
+      panel.refreshStorage();
+    },
+    openUnsorted(index) {
+      openViewer(
+        unsortedMedia().map((m) => ({ media: m, caption: captionFor(null, m) })),
+        index,
+      );
+    },
     describe,
     async createPointHere() {
       const pos = store.get();
@@ -265,6 +284,181 @@ export function mountHikeView(
   });
 
   /** Новая точка в месте трека: в базу, в список, стрелку — на неё, панель — в правку. */
+  /**
+   * Положить фото на трек в позицию pos: в точку ближе 100 м, если такая есть,
+   * иначе — в новую точку здесь. Стрелка встаёт на эту точку.
+   */
+  async function placeMedia(m: MediaItem, pos: number): Promise<void> {
+    let target = points
+      .filter((p) => Math.abs(p.pos_m - pos) <= ATTACH_M)
+      .sort((a, b) => Math.abs(a.pos_m - pos) - Math.abs(b.pos_m - pos))[0];
+    if (!target) {
+      const p = pointAt(track, pos);
+      target = await addPoint({ pos, lat: p.lat, lon: p.lon });
+    }
+    const sort = mediaOf(target.id).reduce((max, x) => Math.max(max, x.sort + 1), 0);
+    await moveMedia(m.id, target.id, sort);
+    const pointId = target.id;
+    media = media.map((x) => (x.id === m.id ? { ...x, point_id: pointId, sort } : x));
+    dataChanged(true);
+    store.set(target.pos_m, 'list');
+  }
+
+  /**
+   * Загрузка в поход целиком (этап 5): подготовить файлы (время, место, сжатие),
+   * разложить по маршруту, показать экран проверки и только после «Сохранить» — грузить.
+   */
+  async function autoUpload(files: File[]): Promise<void> {
+    const busy = h('div', { class: 'busy', role: 'status' }, 'Готовлю фото…');
+    document.body.append(busy);
+    const prepared = new Map<string, Prepared>();
+    const names = new Map<string, string>();
+    const errors: string[] = [];
+    try {
+      const results = await runQueue(
+        files,
+        async (file, i) => {
+          const key = `f${i}`;
+          prepared.set(key, await prepareFile(file, tz));
+          names.set(key, file.name);
+        },
+        {
+          // Сжатие грузит процессор — по два файла сразу хватает.
+          concurrency: 2,
+          attempts: 1,
+          backoffMs: () => 0,
+          retryable: () => false,
+          onSettled: (_i, done, total) => {
+            busy.textContent = `Готовлю фото: ${done} из ${total}`;
+          },
+        },
+      );
+      results.forEach((r, i) => {
+        if (!r.ok) {
+          errors.push(
+            r.error instanceof MediaError
+              ? r.error.message
+              : `${files[i]?.name ?? 'файл'}: ${errorText(r.error)}`,
+          );
+        }
+      });
+    } finally {
+      busy.remove();
+    }
+    if (!prepared.size) {
+      if (errors.length) window.alert(errors.join('\n'));
+      return;
+    }
+
+    const keys = [...prepared.keys()];
+    const { placements, layout } = layoutMedia(
+      keys.map((key) => {
+        const m = (prepared.get(key) as Prepared).media;
+        return { id: key, takenAt: m.takenAt, lat: m.lat, lon: m.lon };
+      }),
+      track,
+      startedAt,
+      points.map((p) => ({ id: p.id, pos: p.pos_m })),
+    );
+    const placementOf = new Map(placements.map((p) => [p.id, p]));
+    const thumbUrls = new Map(
+      keys.map((key) => [key, URL.createObjectURL((prepared.get(key) as Prepared).media.thumb)]),
+    );
+    const warnings = keys.flatMap((key) => {
+      const w = prepared.get(key)?.warning;
+      return w ? [`${names.get(key) ?? ''}: ${w}`] : [];
+    });
+
+    openReview({
+      track,
+      bbox: hike.bbox,
+      entries: keys.map((key) => {
+        const m = (prepared.get(key) as Prepared).media;
+        return {
+          key,
+          name: names.get(key) ?? key,
+          thumbUrl: thumbUrls.get(key) ?? '',
+          kind: m.kind,
+          placement: placementOf.get(key) as Placement,
+          approx: m.takenApprox,
+          noData: m.takenApprox || (m.takenAt === null && m.lat === null),
+        };
+      }),
+      layout,
+      pointTitles: new Map(points.map((p) => [p.id, p.title])),
+      km: formatKm,
+      errors: [...errors, ...warnings],
+      onClose: () => thumbUrls.forEach((url) => URL.revokeObjectURL(url)),
+      async onSave(result, progress) {
+        // Новые точки — сначала, чтобы фото было куда класть.
+        const target = new Map<string, string | null>();
+        for (const g of result.groups) {
+          let pointId = g.pointId;
+          if (!pointId) {
+            const p = pointAt(track, g.pos);
+            const created = await createPoint(
+              hike.id,
+              { pos_m: g.pos, lat: p.lat, lon: p.lon },
+              g.title,
+            );
+            points = [...points, created];
+            pointId = created.id;
+          }
+          for (const key of g.keys) target.set(key, pointId);
+        }
+        for (const key of result.unsorted) target.set(key, null);
+        sortPoints();
+        dataChanged();
+
+        // Порядок внутри точки — по времени съёмки, после уже лежащих там фото.
+        const nextSort = new Map<string | null, number>();
+        const uploads = [...target.entries()]
+          .map(([key, pointId]) => ({ key, pointId, m: (prepared.get(key) as Prepared).media }))
+          .sort((a, b) => (a.m.takenAt ?? Infinity) - (b.m.takenAt ?? Infinity))
+          .map((u) => {
+            const base =
+              nextSort.get(u.pointId) ??
+              (u.pointId ? mediaOf(u.pointId) : unsortedMedia()).reduce(
+                (max, x) => Math.max(max, x.sort + 1),
+                0,
+              );
+            nextSort.set(u.pointId, base + 1);
+            return { ...u, sort: base };
+          });
+
+        progress(`Загружаю: 0 из ${uploads.length}`);
+        const results = await runQueue(
+          uploads,
+          async (u) => {
+            const item = await uploadMedia(hike.id, u.pointId, u.sort, u.m);
+            media = [...media, item];
+            return item;
+          },
+          {
+            concurrency: UPLOAD_CONCURRENCY,
+            attempts: UPLOAD_ATTEMPTS,
+            backoffMs: (attempt) => 1000 * 2 ** (attempt - 1),
+            retryable: isNetworkError,
+            onSettled: (_i, done, total) => {
+              progress(`Загружаю: ${done} из ${total}`);
+              dataChanged();
+            },
+          },
+        );
+        dataChanged(true);
+        panel.refreshStorage();
+        const failed = results.flatMap((r, i) =>
+          r.ok ? [] : [`${names.get(uploads[i]?.key ?? '') ?? 'файл'}: ${errorText(r.error)}`],
+        );
+        if (failed.length) {
+          window.alert(
+            `Не загрузились ${failed.length} из ${uploads.length}:\n${failed.join('\n')}`,
+          );
+        }
+      },
+    });
+  }
+
   async function addPoint(place: { pos: number; lat: number; lon: number }): Promise<Point> {
     const point = await createPoint(hike.id, { pos_m: place.pos, lat: place.lat, lon: place.lon });
     points = [...points, point];
@@ -353,6 +547,27 @@ export function mountHikeView(
     ),
   );
 
+  // На компьютере фото можно просто бросить на экран похода — запустится автораскладка.
+  if (editable) {
+    const view = root.firstElementChild as HTMLElement;
+    const hasFiles = (e: DragEvent): boolean => e.dataTransfer?.types.includes('Files') ?? false;
+    view.addEventListener('dragover', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      view.classList.add('dragging-files');
+    });
+    view.addEventListener('dragleave', (e) => {
+      if (e.target === view) view.classList.remove('dragging-files');
+    });
+    view.addEventListener('drop', (e) => {
+      view.classList.remove('dragging-files');
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      const files = [...(e.dataTransfer?.files ?? [])];
+      if (files.length) void autoUpload(files);
+    });
+  }
+
   // Без WebGL MapLibre падает при создании — тогда остальной экран работает, а в рамке причина.
   try {
     map = createHikeMap({
@@ -388,6 +603,13 @@ export function mountHikeView(
             window.alert(`Не получилось поставить точку: ${errorText(err)}`),
           );
       },
+      onDropMedia(mediaId, place) {
+        const m = media.find((x) => x.id === mediaId);
+        if (!m) return;
+        void placeMedia(m, place.pos).catch((err: unknown) =>
+          window.alert(`Не получилось положить фото: ${errorText(err)}`),
+        );
+      },
     });
     cleanups.push(() => map?.destroy());
   } catch (err) {
@@ -414,7 +636,7 @@ export function mountHikeView(
 
   // Клавиатура
   const onKey = (e: KeyboardEvent): void => {
-    if (e.ctrlKey || e.metaKey || e.altKey || isViewerOpen()) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || isViewerOpen() || isReviewOpen()) return;
     const target = e.target;
     if (
       target instanceof Element &&

@@ -17,6 +17,7 @@ import { splitDays } from '../track/days';
 import { nearestOnTrack } from '../track/nearest';
 import type { Point, TrackData } from '../types';
 import { h } from '../ui/dom';
+import { MEDIA_DRAG_TYPE } from '../ui/drag';
 
 // Воркер MapLibre ищется по относительному адресу, который Vite при сборке теряет; отдаём его явно.
 setWorkerUrl(mapWorkerUrl);
@@ -61,6 +62,8 @@ export interface HikeMapOptions {
   editable: boolean;
   onPointMove?: (point: Point, place: TrackPlace) => void;
   onLongPress?: (place: TrackPlace) => void;
+  /** Фото из лотка бросили на карту — в ближайшее место трека. */
+  onDropMedia?: (mediaId: string, place: TrackPlace) => void;
 }
 
 export interface HikeMap {
@@ -350,6 +353,24 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
     // Долгое нажатие на телефоне не должно открывать меню браузера.
     canvasBox.addEventListener('contextmenu', (e) => e.preventDefault());
     map.on('movestart', cancel);
+  }
+
+  // Фото из лотка неразобранных можно бросить на карту — встанет в ближайшее место трека.
+  if (opts.editable && opts.onDropMedia) {
+    container.addEventListener('dragover', (e) => {
+      if (e.dataTransfer?.types.includes(MEDIA_DRAG_TYPE)) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      }
+    });
+    container.addEventListener('drop', (e) => {
+      const id = e.dataTransfer?.getData(MEDIA_DRAG_TYPE);
+      if (!id) return;
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const place = placeNear(e.clientX - rect.left, e.clientY - rect.top, null);
+      if (place) opts.onDropMedia?.(id, place);
+    });
   }
 
   // Обновления позиции — не чаще кадра.
