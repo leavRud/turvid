@@ -65,6 +65,8 @@ export interface HikeMapOptions {
 
 export interface HikeMap {
   setPoints(points: Point[]): void;
+  /** Снизу карту закрывает шторка на столько пикселей — «Следовать» держит стрелку выше. */
+  setBottomInset(px: number): void;
   destroy(): void;
 }
 
@@ -245,6 +247,7 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
   let followRaf = 0;
   let followTs = 0;
   let arrowDragging = false;
+  let bottomInset = 0;
   function followTick(ts: number): void {
     followRaf = 0;
     if (!follow || arrowDragging) return;
@@ -258,15 +261,17 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
     const at = map.project([p.lon, p.lat]);
     const halfW = container.clientWidth / 2;
     const halfH = container.clientHeight / 2;
+    // Целимся в центр видимой части: шторка закрывает низ карты.
+    const visibleHalfH = Math.max(halfH - bottomInset / 2, 40);
     const dx = at.x - halfW;
-    const dy = at.y - halfH;
+    const dy = at.y - visibleHalfH;
     if (Math.hypot(dx, dy) < 0.5) {
       followTs = 0;
       return;
     }
     const dt = followTs ? Math.min((ts - followTs) / 1000, 0.1) : 1 / 60;
     followTs = ts;
-    const [mx, my] = followStep(dx, dy, dt, halfW, halfH);
+    const [mx, my] = followStep(dx, dy, dt, halfW, visibleHalfH);
     map.jumpTo({ center: map.unproject([halfW + mx, halfH + my]) });
     followRaf = requestAnimationFrame(followTick);
   }
@@ -445,6 +450,10 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
 
   return {
     setPoints,
+    setBottomInset(px) {
+      bottomInset = Math.max(0, px);
+      keepInView();
+    },
     destroy() {
       unsubscribe();
       cancelAnimationFrame(followRaf);

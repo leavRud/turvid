@@ -37,6 +37,7 @@ import {
   formatTime,
   plural,
 } from '../ui/format';
+import { createSheet, SHEET_PEEK_PX } from '../ui/sheet';
 import { themeSwitcher } from '../ui/theme';
 import { isViewerOpen, openViewer } from '../ui/viewer';
 import { createHikeMenu } from './hike-menu';
@@ -182,7 +183,7 @@ export function mountHikeView(
       'div',
       { class: 'hike-head-bar' },
       editable
-        ? h('a', { href: '/', class: 'btn btn-ghost btn-small', 'data-link': true }, '← Мои походы')
+        ? h('a', { href: '/', class: 'btn btn-ghost btn-small', 'data-link': true }, '← Походы')
         : h('span', { class: 'muted small-text' }, 'Turvid · дневник похода'),
       h(
         'div',
@@ -224,7 +225,8 @@ export function mountHikeView(
   const prevBtn = h(
     'button',
     { type: 'button', class: 'btn btn-ghost', 'aria-label': 'К предыдущей точке' },
-    '◀ Точка',
+    '◀',
+    h('span', { class: 'btn-label' }, ' Точка'),
   );
   const playBtn = h('button', { type: 'button', class: 'btn btn-primary play-btn' }, '▶ Играть');
   const speedBtn = h(
@@ -235,7 +237,8 @@ export function mountHikeView(
   const nextBtn = h(
     'button',
     { type: 'button', class: 'btn btn-ghost', 'aria-label': 'К следующей точке' },
-    'Точка ▶',
+    h('span', { class: 'btn-label' }, 'Точка '),
+    '▶',
   );
   prevBtn.addEventListener('click', () =>
     store.set(prevPointPos(store.get(), pointPos()) ?? 0, 'buttons'),
@@ -556,21 +559,45 @@ export function mountHikeView(
     prevBtn.hidden = nextBtn.hidden = points.length === 0;
     if (forcePanel) panel.refresh();
     else panel.update();
+    // Вызывается только после монтирования экрана — шторка к этому времени уже есть.
+    sheet.setTitle(sheetTitle());
   }
 
-  root.replaceChildren(
+  // На телефоне панель точки — шторка снизу, над полосой с ползунком (раздел 7 ТЗ).
+  // Шторка открылась — «Следовать» держит стрелку над ней, а не под ней.
+  const sheet = createSheet(panel.element, (_state, height) =>
+    map?.setBottomInset(height > 0 ? height - SHEET_PEEK_PX : 0),
+  );
+  cleanups.push(sheet.destroy);
+  const bottom = h('div', { class: 'hike-bottom' }, strip.element, controls);
+  const viewEl = h(
+    'main',
+    { class: 'hike-view' },
+    header,
     h(
-      'main',
-      { class: 'hike-view' },
-      header,
-      h(
-        'div',
-        { class: 'hike-body' },
-        h('div', { class: 'hike-main' }, mapBox, strip.element, controls),
-        panel.element,
-      ),
+      'div',
+      { class: 'hike-body' },
+      h('div', { class: 'hike-main' }, mapBox, bottom),
+      sheet.element,
     ),
   );
+  root.replaceChildren(viewEl);
+  // Шторка стоит над нижней полосой — её высота меняется (режимы, перенос кнопок).
+  const bottomObserver = new ResizeObserver(() => {
+    viewEl.style.setProperty('--bottom-bar-h', `${bottom.offsetHeight}px`);
+  });
+  bottomObserver.observe(bottom);
+  cleanups.push(() => bottomObserver.disconnect());
+
+  /** Краешек шторки: точка, если стоим на ней, иначе — километр, день и время. */
+  const sheetTitle = (): string => {
+    const pos = store.get();
+    const point = points.find((p) => Math.abs(p.pos_m - pos) < 0.5);
+    if (!point) return badgeText(pos);
+    const n = mediaOf(point.id).length;
+    return `${point.title || 'Точка'}${n ? ` · ${n} фото` : ''} · ${formatKm(point.pos_m)}`;
+  };
+  sheet.setTitle(sheetTitle());
 
   // На компьютере фото можно просто бросить на экран похода — запустится автораскладка.
   if (editable) {
@@ -650,6 +677,9 @@ export function mountHikeView(
   cleanups.push(
     store.subscribe((_pos, source) => {
       panel.update();
+      sheet.setTitle(sheetTitle());
+      // Нажали точку на карте или в списке — шторка выезжает до половины, видно карточку.
+      if (source === 'list' && sheet.state() === 'peek') sheet.open('half');
       if (source !== 'play') stopPlay();
       clearTimeout(urlTimer);
       urlTimer = window.setTimeout(() => {

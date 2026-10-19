@@ -37,6 +37,9 @@
   --strip-height: 64px;
   --panel-width: 320px;
   --arrow-size: 44px;
+  --sheet-peek: 64px;
+  --sheet-radius: 16px;
+  --color-grip: #c5cbc6;
   --point-size: 18px;
   --thumb-size: 72px;
   --color-viewer-bg: rgb(0 0 0 / 92%);
@@ -95,6 +98,7 @@
     --color-speed-1: #b8892f;
     --color-speed-2: #4f8e5d;
     --color-speed-3: #6fbf8e;
+    --color-grip: #4a524e;
   }
 }
 
@@ -129,6 +133,7 @@
   --color-speed-1: #b8892f;
   --color-speed-2: #4f8e5d;
   --color-speed-3: #6fbf8e;
+  --color-grip: #4a524e;
 }
 
 *,
@@ -616,7 +621,7 @@ h2 {
     min-height: 360px;
   }
 
-  .hike-panel {
+  .sheet {
     flex: none;
     width: var(--panel-width);
   }
@@ -724,7 +729,7 @@ h2 {
 }
 
 .map-follow {
-  min-height: 29px;
+  min-height: var(--tap);
   padding: 0 var(--space-2);
   border: 0;
   border-radius: 4px;
@@ -771,7 +776,7 @@ h2 {
 }
 
 .strip-mode {
-  min-height: 32px;
+  min-height: var(--tap);
   padding: 0 var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -1079,7 +1084,7 @@ h2 {
 }
 
 .edit-thumb {
-  width: calc(var(--thumb-size) + 24px);
+  width: calc(3 * var(--tap) + 2 * var(--space-1));
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -1098,8 +1103,8 @@ h2 {
 }
 
 .mini-btn {
-  min-width: 30px;
-  min-height: 30px;
+  min-width: var(--tap);
+  min-height: var(--tap);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   background: var(--color-surface);
@@ -1383,7 +1388,7 @@ body.review-open {
 }
 
 .review-move {
-  min-height: 36px;
+  min-height: var(--tap);
   width: 100%;
   border: 1px solid var(--color-border);
   border-radius: 6px;
@@ -1557,4 +1562,187 @@ body.review-open {
   border-radius: var(--radius);
   overflow: hidden;
   border: 1px solid var(--color-border);
+}
+
+/* Этап 7: нижняя полоса, шторка, телефон */
+
+.hike-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Кнопки масштаба MapLibre — тоже не меньше 44 px (стили MapLibre грузятся позже — нужна специфичность выше). */
+.maplibregl-map .maplibregl-ctrl-group button {
+  width: var(--tap);
+  height: var(--tap);
+}
+
+.sheet-head {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .hike-view {
+    height: 100dvh;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+    max-width: none;
+  }
+
+  .hike-head {
+    padding: var(--space-2) var(--gutter) var(--space-1);
+    gap: 2px;
+  }
+
+  .hike-head h1 {
+    font-size: 1.15em;
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .hike-head > .muted,
+  .hike-summary {
+    width: 100%;
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .hike-body {
+    flex: 1;
+    min-height: 0;
+    gap: 0;
+  }
+
+  .hike-main {
+    flex: 1;
+    min-height: 0;
+    gap: 0;
+  }
+
+  /* Карта во всю ширину; снизу — место под краешек шторки. */
+  .hike-map {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    margin-bottom: var(--sheet-peek);
+  }
+
+  /* Ползунок и кнопки прижаты к низу экрана. */
+  .hike-bottom {
+    padding: var(--space-2) var(--gutter) calc(var(--space-2) + env(safe-area-inset-bottom));
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .player-controls {
+    flex-wrap: nowrap;
+  }
+
+  .player-controls .btn {
+    flex: 1;
+    padding: 0 var(--space-2);
+  }
+
+  .play-btn {
+    min-width: 0;
+  }
+
+  .sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--bottom-bar-h, 140px);
+    z-index: 20;
+    height: var(--sheet-peek);
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface);
+    border-radius: var(--sheet-radius) var(--sheet-radius) 0 0;
+    box-shadow: 0 -4px 16px var(--color-backdrop);
+    overflow: hidden;
+    transition: height 0.25s ease;
+  }
+
+  .sheet.dragging {
+    transition: none;
+  }
+
+  .sheet-head {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: var(--sheet-peek);
+    padding: var(--space-2) var(--gutter);
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+  }
+
+  .sheet-grip {
+    width: 40px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--color-grip);
+  }
+
+  .sheet-title {
+    width: 100%;
+    text-align: center;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sheet-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 var(--gutter) var(--space-4);
+  }
+
+  /* Свёрнута — видно только краешек с заголовком; тело не выглядывает и не ловит фокус. */
+  .sheet[data-state='peek'] .sheet-body {
+    visibility: hidden;
+  }
+}
+
+@media (max-width: 899px) {
+  /* На телефоне у «к точке» — только стрелки, «Играть» забирает остальное место. */
+  .player-controls .btn-label {
+    display: none;
+  }
+
+  .player-controls .btn {
+    flex: none;
+    min-width: var(--tap);
+    white-space: nowrap;
+  }
+
+  .player-controls .play-btn {
+    flex: 1;
+  }
+}
+
+/* Кнопка «i» с атрибуцией карты — тоже 44 px, чтобы попасть пальцем. */
+.maplibregl-map .maplibregl-ctrl-attrib-button {
+  width: var(--tap);
+  height: var(--tap);
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact {
+  min-height: var(--tap);
 }
