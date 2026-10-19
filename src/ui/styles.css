@@ -9,6 +9,18 @@
   --color-accent: #2f6f4f;
   --color-accent-text: #ffffff;
   --color-error: #b3261e;
+  --color-warning-bg: #fff4d6;
+  --color-warning-text: #6b4e00;
+  --color-danger: #b3261e;
+  --color-danger-text: #ffffff;
+  --color-day-0: #2f6f4f;
+  --color-day-1: #c0632b;
+  --color-day-2: #3767b0;
+  --color-day-3: #8a4fa8;
+  --color-backdrop: rgb(0 0 0 / 45%);
+  --track-width: 2.5px;
+  --minimap-size: 96px;
+  --dialog-max: 440px;
 
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-size: 16px;
@@ -35,6 +47,14 @@
     --color-accent: #6fbf8e;
     --color-accent-text: #0f1a14;
     --color-error: #f2b8b5;
+    --color-warning-bg: #3a3014;
+    --color-warning-text: #f3d98b;
+    --color-danger: #e5726a;
+    --color-danger-text: #1a0e0d;
+    --color-day-0: #6fbf8e;
+    --color-day-1: #f0a06a;
+    --color-day-2: #86aef0;
+    --color-day-3: #c897e0;
   }
 }
 
@@ -184,4 +204,272 @@ h2 {
 
 .empty p {
   margin: 0 0 var(--space-1);
+}
+
+/* Общие блоки */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin: 0;
+}
+
+.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.small-text {
+  font-size: var(--font-size-small);
+}
+
+.section-title {
+  font-size: var(--font-size);
+  margin-bottom: var(--space-2);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.btn-small {
+  font-size: var(--font-size-small);
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  color: var(--color-danger-text);
+}
+
+.warning {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field input,
+.dialog input {
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+}
+
+.check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-accent);
+}
+
+/* Трек в SVG */
+
+.track-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.track-svg path {
+  fill: none;
+  stroke-width: var(--track-width);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.day-0 {
+  stroke: var(--color-day-0);
+  background: var(--color-day-0);
+}
+
+.day-1 {
+  stroke: var(--color-day-1);
+  background: var(--color-day-1);
+}
+
+.day-2 {
+  stroke: var(--color-day-2);
+  background: var(--color-day-2);
+}
+
+.day-3 {
+  stroke: var(--color-day-3);
+  background: var(--color-day-3);
+}
+
+.day-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: var(--space-2);
+}
+
+/* Новый поход */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-3);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.dropzone p {
+  margin: 0;
+}
+
+.dragging .dropzone {
+  border-color: var(--color-accent);
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.progress p {
+  margin: 0;
+}
+
+.spinner {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.preview-map {
+  padding: var(--space-2);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.stats dt {
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.stats dd {
+  margin: 0;
+  font-size: 1.15em;
+  font-weight: 600;
+}
+
+.days li {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
+
+/* Карточки походов */
+
+.hike-card {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.hike-card-map {
+  flex: none;
+  width: var(--minimap-size);
+  height: var(--minimap-size);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+
+.hike-card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.hike-card-body h2 {
+  font-size: 1.1em;
+  overflow-wrap: anywhere;
+}
+
+.hike-card-body p {
+  margin: 0;
+}
+
+.hike-card-actions {
+  margin-top: var(--space-1);
+}
+
+/* Диалог */
+
+.dialog {
+  width: calc(100% - 2 * var(--gutter));
+  max-width: var(--dialog-max);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: var(--space-4) var(--space-3);
+}
+
+.dialog::backdrop {
+  background: var(--color-backdrop);
+}
+
+.dialog p {
+  margin: 0;
 }

@@ -30,5 +30,5 @@ export interface Hike {
   created_at: string;
 }
 
-/** Поход для списка — без тяжёлого трека. */
-export type HikeSummary = Omit<Hike, 'track' | 'source_path' | 'share_token'>;
+/** Поход для списка: без служебных полей, но с треком для мини-карты и числом фото. */
+export type HikeListItem = Omit<Hike, 'source_path' | 'share_token'> & { photos: number };

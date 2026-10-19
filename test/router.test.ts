@@ -12,6 +12,10 @@ describe('matchRoute', () => {
     expect(matchRoute('/login/')).toEqual({ name: 'login' });
   });
 
+  it('новый поход', () => {
+    expect(matchRoute('/new')).toEqual({ name: 'newHike' });
+  });
+
   it('неизвестный путь — notFound', () => {
     expect(matchRoute('/nope/')).toEqual({ name: 'notFound', path: '/nope' });
   });

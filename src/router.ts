@@ -1,6 +1,7 @@
 // Маршрутизация через History API. Разбор пути — чистая функция.
 
-export type Route = { name: 'hikes' } | { name: 'login' } | { name: 'notFound'; path: string };
+export type Route =
+  { name: 'hikes' } | { name: 'newHike' } | { name: 'login' } | { name: 'notFound'; path: string };
 
 /** Превращает путь адреса в маршрут. Хвостовой слэш не важен. */
 export function matchRoute(pathname: string): Route {
@@ -9,6 +10,8 @@ export function matchRoute(pathname: string): Route {
     case '':
     case '/':
       return { name: 'hikes' };
+    case '/new':
+      return { name: 'newHike' };
     case '/login':
       return { name: 'login' };
     default:
@@ -37,4 +40,14 @@ export function navigate(path: string, { replace = false } = {}): void {
 export function onRouteChange(listener: Listener): void {
   listeners.add(listener);
   window.addEventListener('popstate', listener);
+}
+
+/** Ссылки с атрибутом data-link переходят без перезагрузки страницы. */
+export function bindLinks(root: HTMLElement): void {
+  root.addEventListener('click', (e) => {
+    const a = (e.target as HTMLElement).closest('a[data-link]');
+    if (!a || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    navigate(a.getAttribute('href') ?? '/');
+  });
 }

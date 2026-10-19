@@ -3,7 +3,8 @@ import type { Session } from '@supabase/supabase-js';
 import { getSession, onAuthChange } from './api/auth';
 import { renderHikesList } from './pages/hikes-list';
 import { renderLogin } from './pages/login';
-import { currentRoute, isPublic, navigate, onRouteChange } from './router';
+import { renderNewHike } from './pages/new-hike';
+import { bindLinks, currentRoute, isPublic, navigate, onRouteChange } from './router';
 import { h } from './ui/dom';
 
 const root = document.getElementById('app');
@@ -31,13 +32,16 @@ function render(): void {
     case 'hikes':
       void renderHikesList(app, session?.user.email);
       break;
+    case 'newHike':
+      renderNewHike(app);
+      break;
     case 'notFound':
       app.replaceChildren(
         h(
           'main',
           { class: 'page page-narrow' },
           h('h1', {}, 'Страница не найдена'),
-          h('a', { href: '/', class: 'btn btn-ghost' }, 'К походам'),
+          h('a', { href: '/', class: 'btn btn-ghost', 'data-link': true }, 'К походам'),
         ),
       );
       break;
@@ -52,6 +56,7 @@ async function start(): Promise<void> {
     session = next;
     if (changed) render();
   });
+  bindLinks(app);
   onRouteChange(render);
   render();
 }

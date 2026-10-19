@@ -1,5 +1,6 @@
 import { sendLoginLink } from '../api/auth';
 import { h } from '../ui/dom';
+import { errorText } from '../ui/errors';
 
 /** Экран входа: почта и кнопка «Прислать ссылку». */
 export function renderLogin(root: HTMLElement): void {
@@ -44,8 +45,4 @@ export function renderLogin(root: HTMLElement): void {
     ),
   );
   input.focus();
-}
-
-function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

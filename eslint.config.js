@@ -14,4 +14,9 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'error',
     },
   },
+  {
+    // В тестах ! после поиска по массиву короче и понятнее проверок.
+    files: ['test/**/*.ts'],
+    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+  },
 );
