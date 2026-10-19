@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { distanceAxis, NIGHT_GAP, timeAxis } from '../src/player/axis';
+import { distanceAxis, isNight, NIGHT_SCALE, timeAxis } from '../src/player/axis';
 import { keyTarget, nextPointPos, prevPointPos } from '../src/player/keys';
-import { BASE_SPEED_MPS, playStep, POINT_PAUSE_S } from '../src/player/playback';
+import {
+  BASE_SPEED_MPS,
+  NIGHT_SPEEDUP,
+  playStep,
+  playStepTime,
+  POINT_PAUSE_S,
+  SPEEDS,
+  timeRate,
+} from '../src/player/playback';
 import {
   bearingAt,
   dayIndexAt,
@@ -14,7 +22,7 @@ import {
 import {
   followView,
   MIN_VIEW,
-  nightStops,
+  skyStops,
   panView,
   profilePath,
   speedBands,
@@ -95,23 +103,29 @@ describe('axis', () => {
     expect(a.posToX(5000)).toBe(1);
   });
 
-  it('по времени: дни подряд, ночь — разрыв', () => {
+  it('по времени: без пробелов, ночь сжата', () => {
     const track = sample();
     const a = timeAxis(track, summarizeDays(track));
     expect(a.days).toHaveLength(2);
+    expect(a.segments.map((s) => s.night)).toEqual([false, true, false]);
     const [d1, d2] = a.days;
-    // Дни по 1000 с — равной ширины.
+    // Дни по 1000 с, ночь 49 000 с, сжатая в 4 раза: 1000 + 12 250 + 1000.
+    const total = 1000 + 49_000 * NIGHT_SCALE + 1000;
     expect(d1!.x0).toBe(0);
-    expect(d1!.x1).toBeCloseTo((1 - NIGHT_GAP) / 2);
-    expect(d2!.x0).toBeCloseTo(d1!.x1 + NIGHT_GAP);
-    expect(d2!.x1).toBeCloseTo(1);
+    expect(d1!.x1).toBeCloseTo(1000 / total);
+    expect(d2!.x0).toBeCloseTo(1 - 1000 / total);
+    expect(d2!.x1).toBe(1);
+    // Куски идут встык — пробелов нет.
+    a.segments.slice(1).forEach((s, i) => expect(s.x0).toBe(a.segments[i]!.x1));
     // Остановка занимает место на оси: от 200 до 800 с позиция не меняется.
     expect(a.xToPos(a.timeToX(500))).toBeCloseTo(500);
-    expect(a.posToX(1000)).toBeCloseTo(d1!.x1);
     expect(a.posToX(2000)).toBeCloseTo(1);
-    // Клик в разрыв — к ближайшему дню.
-    expect(a.xToTime(d1!.x1 + 0.001)).toBe(1000);
-    expect(a.xToTime(d2!.x0 - 0.001)).toBe(50_000);
+    // По ночи время идёт: середина ночи — середина её куска оси.
+    const night = a.segments[1]!;
+    expect(a.xToTime((night.x0 + night.x1) / 2)).toBeCloseTo(25_500);
+    expect(a.timeToX(25_500)).toBeCloseTo((night.x0 + night.x1) / 2);
+    expect(isNight(a, 25_500)).toBe(true);
+    expect(isNight(a, 500)).toBe(false);
   });
 });
 
@@ -226,11 +240,12 @@ describe('sun', () => {
     expect(daylight(10)).toBe(1);
   });
 
-  it('фон дня: светло в начале, темнеет к вечеру', () => {
-    // День с 15:00 до 19:00 МСК (12:00–16:00 UTC) в одной точке.
+  it('небо одной лентой: светло в начале, темнеет к вечеру', () => {
+    // С 15:00 до 19:00 МСК (12:00–16:00 UTC) в одной точке, ось — линейное время.
     const start = Date.parse('2026-10-17T12:00:00Z') / 1000;
     const track = { lat: [lat, lat], lon: [lon, lon], ele: null, t: [0, 4 * 3600], dist: [0, 1] };
-    const stops = nightStops(track, start, 0, 4 * 3600);
+    const stops = skyStops(track, start, (x) => x * 4 * 3600, 50);
+    expect(stops).toHaveLength(50);
     expect(stops[0]!.offset).toBe(0);
     expect(stops.at(-1)!.offset).toBe(1);
     expect(stops[0]!.night).toBe(0);
@@ -268,5 +283,45 @@ describe('масштаб полосы', () => {
     expect(moved.b - moved.a).toBeCloseTo(0.2);
     expect(0.3).toBeLessThan(moved.b);
     expect(0.3).toBeGreaterThan(moved.a);
+  });
+});
+
+describe('проигрывание по времени', () => {
+  const ctx = {
+    rate: 400,
+    endT: 100_000,
+    pointTimes: [5_000],
+    isNight: (t: number) => t > 20_000 && t < 60_000,
+  };
+  const at = (t: number) => ({ t, pause: 0, done: false });
+
+  it('скорости ×0.5, ×1, ×2, ×4', () => {
+    expect([...SPEEDS]).toEqual([0.5, 1, 2, 4]);
+    expect(playStepTime(at(0), 1, 0.5, ctx).t).toBeCloseTo(200);
+    expect(playStepTime(at(0), 1, 4, ctx).t).toBeCloseTo(1600);
+  });
+
+  it('время идёт и на стоянке — стоянки не перескакиваются', () => {
+    // От 1000 до 1001 с проходит ровно rate × dt, где бы ты ни стоял.
+    expect(playStepTime(at(1000), 0.5, 1, ctx).t).toBeCloseTo(1200);
+  });
+
+  it('ночь ускорена', () => {
+    expect(playStepTime(at(30_000), 1, 1, ctx).t).toBeCloseTo(30_000 + 400 * NIGHT_SPEEDUP);
+  });
+
+  it('на точке — пауза 2 с', () => {
+    const s = playStepTime(at(4_900), 1, 1, ctx);
+    expect(s).toEqual({ t: 5_000, pause: POINT_PAUSE_S, done: false });
+  });
+
+  it('в конце — done', () => {
+    expect(playStepTime(at(99_900), 1, 1, ctx)).toEqual({ t: 100_000, pause: 0, done: true });
+  });
+
+  it('×1 по времени — как «1 км за 2 с» на средней скорости похода', () => {
+    // 31,4 км за 6 ч 45 мин в движении → ~1,29 м/с → ~387 с похода за секунду.
+    expect(timeRate(31_438, 24_294)).toBeCloseTo(BASE_SPEED_MPS / (31_438 / 24_294));
+    expect(timeRate(1000, null)).toBe(300);
   });
 });

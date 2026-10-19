@@ -10,7 +10,7 @@ import { distanceAxis, timeAxis, type Axis, type TimeAxis } from './axis';
 import type { PositionStore } from './store';
 import {
   followView,
-  nightStops,
+  skyStops,
   panView,
   profilePath,
   speedBands,
@@ -160,6 +160,11 @@ export function createStrip(opts: StripOptions): Strip {
   const toLocal = (x: number): number => (x - view.a) / (view.b - view.a);
   /** Доля видимой ширины → ось. */
   const fromLocal = (f: number): number => view.a + f * (view.b - view.a);
+  /** Где позиция на оси: на шкале времени — по подсказке времени, если она есть (стоянка, сон). */
+  const axisX = (pos: number): number => {
+    const t = store.time();
+    return timeline && t !== null ? timeline.timeToX(t) : axis.posToX(pos);
+  };
 
   /** Фон и данные в координатах оси — пересобираются только при смене режима. */
   function renderContent(): void {
@@ -170,30 +175,27 @@ export function createStrip(opts: StripOptions): Strip {
       const ta = timeAxis(track, opts.days);
       axis = ta;
       timeline = ta;
-      const defs = svgEl('defs', {});
-      svg.append(defs);
-      // Ночь между днями — тёмная.
-      svg.append(rect(0, 1, 0, VB_H, 'strip-night'));
-      ta.days.forEach((d) => {
-        svg.append(rect(d.x0, d.x1, 0, VB_H, 'strip-daylight'));
-        if (opts.startedAt === null) return;
-        // Поверх дня — темнота по высоте солнца: видно, где рассвет и закат.
-        const id = `strip-night-${++gradientCounter}`;
+      // Фон — небо одной лентой через всю ось, включая сон: видно рассвет и закат.
+      svg.append(rect(0, 1, 0, VB_H, 'strip-daylight'));
+      if (opts.startedAt !== null) {
+        const id = `strip-sky-${++gradientCounter}`;
         const grad = svgEl('linearGradient', { id, x1: 0, x2: 1, y1: 0, y2: 0 });
-        for (const s of nightStops(track, opts.startedAt, d.startT, d.endT)) {
+        for (const s of skyStops(track, opts.startedAt, ta.xToTime)) {
           grad.append(
             svgEl('stop', {
-              offset: s.offset,
+              offset: Math.round(s.offset * 10_000) / 10_000,
               class: 'strip-night-stop',
               'stop-opacity': Math.round(s.night * 100) / 100,
             }),
           );
         }
+        const defs = svgEl('defs', {});
         defs.append(grad);
-        const shade = rect(d.x0, d.x1, 0, VB_H, '');
+        svg.append(defs);
+        const shade = rect(0, 1, 0, VB_H, '');
         shade.setAttribute('fill', `url(#${id})`);
         svg.append(shade);
-      });
+      }
       for (const s of stopMarks(track, opts.stops, ta.timeToX)) {
         svg.append(rect(s.x0, s.x1, 30, VB_H - 44, 'strip-stop'));
       }
@@ -212,7 +214,7 @@ export function createStrip(opts: StripOptions): Strip {
       timeline = null;
       svg.append(rect(0, 1, 0, VB_H, 'strip-daylight'));
     }
-    thumbX = axis.posToX(store.get());
+    thumbX = axisX(store.get());
   }
 
   /** Подписи, отметки и ползунок — зависят от окна масштаба, пересобираются при каждом сдвиге. */
@@ -310,7 +312,7 @@ export function createStrip(opts: StripOptions): Strip {
   function fromPointer(clientX: number): void {
     thumbX = fromLocal(localX(clientX));
     updateThumb();
-    store.set(axis.xToPos(thumbX), 'slider');
+    store.set(axis.xToPos(thumbX), 'slider', timeline ? timeline.xToTime(thumbX) : null);
   }
 
   slider.addEventListener('pointerdown', (e) => {
@@ -364,7 +366,7 @@ export function createStrip(opts: StripOptions): Strip {
 
   const unsubscribe = store.subscribe((pos, source) => {
     if (source !== 'slider') {
-      thumbX = axis.posToX(pos);
+      thumbX = axisX(pos);
       // Полоса прокручивается за стрелкой, если та ушла за край окна.
       const next = followView(view, thumbX);
       if (next !== view) {

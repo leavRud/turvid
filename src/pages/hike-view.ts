@@ -3,8 +3,16 @@
 import { getHike } from '../api/hikes';
 import { createHikeMap } from '../map/hike-map';
 import { keyTarget, nextPointPos, prevPointPos } from '../player/keys';
-import { playStep } from '../player/playback';
-import { dayIndexAt, parsePosParam, pointAt, trackLength } from '../player/position';
+import { isNight, timeAxis } from '../player/axis';
+import { playStep, playStepTime, SPEEDS, timeRate } from '../player/playback';
+import {
+  dayIndexAt,
+  parsePosParam,
+  pointAt,
+  posAtTime,
+  timeAt,
+  trackLength,
+} from '../player/position';
 import { createPositionStore } from '../player/store';
 import { createStrip } from '../player/strip';
 import { stripModes } from '../player/strip-model';
@@ -23,7 +31,6 @@ import {
   plural,
 } from '../ui/format';
 
-const SPEEDS = [1, 2, 4] as const;
 /** Как часто переписывать ?pos= в адресе, мс. */
 const URL_DEBOUNCE_MS = 300;
 
@@ -78,6 +85,8 @@ export function mountHikeView(root: HTMLElement, { hike, points, photos }: HikeB
   const days = summarizeDays(track);
   const stops = track.t ? findStops(track.lat, track.lon, track.t, dayRanges) : [];
   const pointPos = points.map((p) => p.pos_m);
+  /** Ось времени (та же, что у шкалы): где ночь между днями. null — трек без времени. */
+  const tAxis = track.t ? timeAxis(track, days) : null;
   const cleanups: (() => void)[] = [];
 
   const store = createPositionStore(length, parsePosParam(location.search, length) ?? 0);
@@ -87,14 +96,22 @@ export function mountHikeView(root: HTMLElement, { hike, points, photos }: HikeB
     km: string;
     day: string;
     time: string | null;
+    date: string | null;
     ele: string | null;
   } {
     const p = pointAt(track, pos);
-    const dayNo = dayIndexAt(dayRanges, p.index) + 1;
+    // На стоянке и во сне время задано явно (проигрывание, шкала времени), иначе — первое прибытие.
+    const t = store.time() ?? p.t;
+    const night = tAxis !== null && t !== null && isNight(tAxis, t);
+    const dayNo =
+      t !== null
+        ? Math.max(days.filter((d) => d.startT !== null && d.startT <= t).length, 1)
+        : dayIndexAt(dayRanges, p.index) + 1;
     return {
       km: formatKm(pos),
-      day: `день ${dayNo}`,
-      time: startedAt !== null && p.t !== null ? formatTime(startedAt + p.t, tz) : null,
+      day: night ? `ночь после дня ${dayNo}` : `день ${dayNo}`,
+      time: startedAt !== null && t !== null ? formatTime(startedAt + t, tz) : null,
+      date: startedAt !== null && t !== null ? formatShortDate(startedAt + t, tz) : null,
       ele: eleReliable && p.ele !== null ? formatMeters(p.ele) : null,
     };
   }
@@ -209,12 +226,9 @@ export function mountHikeView(root: HTMLElement, { hike, points, photos }: HikeB
 
   function updatePanel(pos: number): void {
     const d = describe(pos);
-    const p = pointAt(track, pos);
+    const day = d.day.charAt(0).toUpperCase() + d.day.slice(1);
     nowKm.textContent = d.km;
-    nowDay.textContent =
-      startedAt !== null && p.t !== null
-        ? `${d.day.replace('день', 'День')}, ${formatShortDate(startedAt + p.t, tz)}`
-        : d.day.replace('день', 'День');
+    nowDay.textContent = d.date ? `${day}, ${d.date}` : day;
     nowTime.textContent = d.time ?? '—';
     nowEle.textContent = d.ele ?? '—';
   }
@@ -284,33 +298,56 @@ export function mountHikeView(root: HTMLElement, { hike, points, photos }: HikeB
   document.addEventListener('keydown', onKey);
   cleanups.push(() => document.removeEventListener('keydown', onKey));
 
-  // Проигрывание
-  let speedIndex = 0;
+  // Проигрывание: со временем в треке — по времени (стоянки длятся, ночь ускорена),
+  // без времени — по расстоянию.
+  let speedIndex = SPEEDS.indexOf(1);
   let playing = false;
   let raf = 0;
   let pause = 0;
   let lastTs = 0;
+  /** Часы проигрывания, секунды от старта: на стоянке позиция стоит, а они идут. */
+  let playT = 0;
+  const endT = track.t ? (track.t[track.t.length - 1] ?? 0) : 0;
+  const timeCtx = tAxis
+    ? {
+        rate: timeRate(hike.distance_m, hike.moving_s),
+        endT,
+        pointTimes: pointPos.map((p) => timeAt(track, p) ?? 0),
+        isNight: (t: number) => isNight(tAxis, t),
+      }
+    : null;
   speedBtn.addEventListener('click', () => {
     speedIndex = (speedIndex + 1) % SPEEDS.length;
-    speedBtn.textContent = `×${SPEEDS[speedIndex]}`;
+    speedBtn.textContent = `×${SPEEDS[speedIndex] ?? 1}`;
   });
   function frame(ts: number): void {
     const dt = lastTs ? Math.min((ts - lastTs) / 1000, 0.1) : 0;
     lastTs = ts;
-    const s = playStep(
-      { pos: store.get(), pause, done: false },
-      dt,
-      SPEEDS[speedIndex] ?? 1,
-      pointPos,
-      length,
-    );
-    pause = s.pause;
-    store.set(s.pos, 'play');
-    if (s.done) stopPlay();
+    const speed = SPEEDS[speedIndex] ?? 1;
+    let done: boolean;
+    if (timeCtx) {
+      const s = playStepTime({ t: playT, pause, done: false }, dt, speed, timeCtx);
+      pause = s.pause;
+      playT = s.t;
+      done = s.done;
+      store.set(posAtTime(track, playT), 'play', playT);
+    } else {
+      const s = playStep({ pos: store.get(), pause, done: false }, dt, speed, pointPos, length);
+      pause = s.pause;
+      done = s.done;
+      store.set(s.pos, 'play');
+    }
+    if (done) stopPlay();
     else raf = requestAnimationFrame(frame);
   }
   function startPlay(): void {
-    if (store.get() >= length) store.set(0, 'play');
+    if (timeCtx) {
+      playT = store.time() ?? timeAt(track, store.get()) ?? 0;
+      if (playT >= endT) playT = 0;
+      store.set(posAtTime(track, playT), 'play', playT);
+    } else if (store.get() >= length) {
+      store.set(0, 'play');
+    }
     playing = true;
     pause = 0;
     lastTs = 0;

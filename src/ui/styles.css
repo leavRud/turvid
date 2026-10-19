@@ -776,10 +776,6 @@ h2 {
   fill: var(--color-strip-daylight);
 }
 
-.strip-night {
-  fill: var(--color-strip-night);
-}
-
 .strip-night-stop {
   stop-color: var(--color-strip-night);
 }

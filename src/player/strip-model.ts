@@ -134,31 +134,30 @@ export function stopMarks(
 }
 
 export interface NightStop {
-  /** Доля длины дня 0..1. */
+  /** Доля оси 0..1. */
   offset: number;
   /** 0 — светло, 1 — ночь. */
   night: number;
 }
 
 /**
- * Темнота по ходу дня для фона шкалы времени: высота солнца в том месте трека,
- * где был в этот момент, раз в stepS секунд.
+ * Небо для фона шкалы времени — одной непрерывной лентой по всей оси, включая сон,
+ * когда часы не писали трек: высота солнца в том месте, где был в этот момент.
+ * `samples` точек по оси; xToTime — та же ось, что у полосы.
  */
-export function nightStops(
+export function skyStops(
   track: TrackData,
   startedAt: number,
-  startT: number,
-  endT: number,
-  stepS = 600,
+  xToTime: (x: number) => number,
+  samples = 400,
 ): NightStop[] {
-  const span = Math.max(endT - startT, 1);
-  const count = Math.max(2, Math.ceil(span / stepS) + 1);
   const out: NightStop[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = startT + (span * i) / (count - 1);
+  for (let i = 0; i < samples; i++) {
+    const x = i / (samples - 1);
+    const t = xToTime(x);
     const p = pointAt(track, posAtTime(track, t));
     const alt = sunAltitude((startedAt + t) * 1000, p.lat, p.lon);
-    out.push({ offset: i / (count - 1), night: 1 - daylight(alt) });
+    out.push({ offset: x, night: 1 - daylight(alt) });
   }
   return out;
 }
