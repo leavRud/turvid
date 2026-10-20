@@ -16,8 +16,13 @@ export async function getSession(): Promise<Session | null> {
   return data.session;
 }
 
+/**
+ * Выход только на этом устройстве. По умолчанию supabase-js выходит везде (scope: 'global'),
+ * и тогда на телефоне и других браузерах сессия умирает молча: база по старому токену ещё
+ * отвечает, а функция media — уже 401.
+ */
 export async function signOut(): Promise<void> {
-  const { error } = await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut({ scope: 'local' });
   if (error) throw error;
 }
 

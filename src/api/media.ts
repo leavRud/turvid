@@ -12,9 +12,21 @@ const SIGNED_URL_TTL_S = 3600;
 /** Столько ключей S3 подписываем за один вызов функции (её предел — 200). */
 const S3_BATCH = 200;
 
-/** Ошибка от Edge Function media: статус ответа нужен, чтобы понять, что S3 не подключён. */
-async function callMedia<T>(body: Record<string, unknown>): Promise<T> {
+/**
+ * Вызов Edge Function media. 401 — сервер сессию не признаёт (истекла или из неё вышли
+ * на другом устройстве): пробуем обновить токен; не вышло — выходим здесь, и приложение
+ * само откроет экран входа. Статус ошибки нужен, чтобы понять, что S3 не подключён.
+ */
+async function callMedia<T>(body: Record<string, unknown>, retry = true): Promise<T> {
   const { data, error, response } = await supabase.functions.invoke<T>('media', { body });
+  if (error && response?.status === 401) {
+    if (retry) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      if (refreshed.session) return callMedia<T>(body, false);
+    }
+    await supabase.auth.signOut({ scope: 'local' });
+    throw new Error('Сессия закончилась — войди заново');
+  }
   if (error) {
     const err = new Error(`Хранилище фото: ${error.message}`) as Error & { status?: number };
     err.status = response?.status;
