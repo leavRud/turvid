@@ -6,7 +6,6 @@ import {
   NIGHT_SPEEDUP,
   playStep,
   playStepTime,
-  POINT_PAUSE_S,
   SPEEDS,
   timeRate,
 } from '../src/player/playback';
@@ -151,24 +150,23 @@ describe('keys', () => {
 
 describe('playStep', () => {
   it('едет со скоростью ×1 = 1 км за 2 с, ×4 быстрее', () => {
-    const s = playStep({ pos: 0, pause: 0, done: false }, 0.1, 1, [], 10_000);
+    const s = playStep({ pos: 0, atPoint: false, done: false }, 0.1, 1, [], 10_000);
     expect(s.pos).toBeCloseTo(BASE_SPEED_MPS * 0.1);
-    expect(playStep({ pos: 0, pause: 0, done: false }, 0.1, 4, [], 10_000).pos).toBeCloseTo(200);
+    expect(playStep({ pos: 0, atPoint: false, done: false }, 0.1, 4, [], 10_000).pos).toBeCloseTo(
+      200,
+    );
   });
-  it('останавливается на точке на 2 с', () => {
-    let s = playStep({ pos: 0, pause: 0, done: false }, 1, 1, [300], 10_000);
-    expect(s).toEqual({ pos: 300, pause: POINT_PAUSE_S, done: false });
-    s = playStep(s, 1.5, 1, [300], 10_000);
-    expect(s.pos).toBe(300);
-    s = playStep(s, 0.5, 1, [300], 10_000);
-    expect(s.pause).toBe(0);
-    s = playStep(s, 0.1, 1, [300], 10_000);
-    expect(s.pos).toBeCloseTo(350);
+  it('встаёт на точке, а после «Играть» с неё — едет дальше', () => {
+    let s = playStep({ pos: 0, atPoint: false, done: false }, 1, 1, [300], 10_000);
+    expect(s).toEqual({ pos: 300, atPoint: true, done: false });
+    // Снова «Играть» — с той же позиции: точку не ловим второй раз.
+    s = playStep({ ...s, atPoint: false }, 0.1, 1, [300], 10_000);
+    expect(s).toEqual({ pos: 350, atPoint: false, done: false });
   });
   it('в конце — done', () => {
-    expect(playStep({ pos: 1900, pause: 0, done: false }, 1, 1, [], 2000)).toEqual({
+    expect(playStep({ pos: 1900, atPoint: false, done: false }, 1, 1, [], 2000)).toEqual({
       pos: 2000,
-      pause: 0,
+      atPoint: false,
       done: true,
     });
   });
@@ -294,7 +292,7 @@ describe('проигрывание по времени', () => {
     pointTimes: [5_000],
     isNight: (t: number) => t > 20_000 && t < 60_000,
   };
-  const at = (t: number) => ({ t, pause: 0, done: false });
+  const at = (t: number) => ({ t, atPoint: false, done: false });
 
   it('скорости ×0.5, ×1, ×2, ×4', () => {
     expect([...SPEEDS]).toEqual([0.5, 1, 2, 4]);
@@ -311,13 +309,18 @@ describe('проигрывание по времени', () => {
     expect(playStepTime(at(30_000), 1, 1, ctx).t).toBeCloseTo(30_000 + 400 * NIGHT_SPEEDUP);
   });
 
-  it('на точке — пауза 2 с', () => {
+  it('на точке — пауза, после «Играть» — дальше', () => {
     const s = playStepTime(at(4_900), 1, 1, ctx);
-    expect(s).toEqual({ t: 5_000, pause: POINT_PAUSE_S, done: false });
+    expect(s).toEqual({ t: 5_000, atPoint: true, done: false });
+    expect(playStepTime(at(5_000), 0.5, 1, ctx).atPoint).toBe(false);
   });
 
   it('в конце — done', () => {
-    expect(playStepTime(at(99_900), 1, 1, ctx)).toEqual({ t: 100_000, pause: 0, done: true });
+    expect(playStepTime(at(99_900), 1, 1, ctx)).toEqual({
+      t: 100_000,
+      atPoint: false,
+      done: true,
+    });
   });
 
   it('×1 по времени — как «1 км за 2 с» на средней скорости похода', () => {

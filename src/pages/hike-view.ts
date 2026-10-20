@@ -685,8 +685,8 @@ export function mountHikeView(
     store.subscribe((_pos, source) => {
       panel.update();
       sheet.setTitle(sheetTitle());
-      // Нажали точку на карте или в списке — шторка выезжает до половины, видно карточку.
-      if (source === 'list' && sheet.state() === 'peek') sheet.open('half');
+      // Нажали точку на карте или в списке — шторка открывается, видно карточку.
+      if (source === 'list' && sheet.state() === 'peek') sheet.open('full');
       if (source !== 'play') stopPlay();
       clearTimeout(urlTimer);
       urlTimer = window.setTimeout(() => {
@@ -719,7 +719,6 @@ export function mountHikeView(
   let speedIndex = SPEEDS.indexOf(1);
   let playing = false;
   let raf = 0;
-  let pause = 0;
   let lastTs = 0;
   /** Часы проигрывания, секунды от старта: на стоянке позиция стоит, а они идут. */
   let playT = 0;
@@ -733,25 +732,30 @@ export function mountHikeView(
     const dt = lastTs ? Math.min((ts - lastTs) / 1000, 0.1) : 0;
     lastTs = ts;
     const speed = SPEEDS[speedIndex] ?? 1;
-    let done: boolean;
+    // Доехали до точки или до конца — пауза; дальше — снова «Играть».
+    let stop: boolean;
     if (tAxis) {
-      const s = playStepTime({ t: playT, pause, done: false }, dt, speed, {
+      const s = playStepTime({ t: playT, atPoint: false, done: false }, dt, speed, {
         rate,
         endT,
         pointTimes: pointPos().map((p) => timeAt(track, p) ?? 0),
         isNight: (t) => isNight(tAxis, t),
       });
-      pause = s.pause;
       playT = s.t;
-      done = s.done;
+      stop = s.atPoint || s.done;
       store.set(posAtTime(track, playT), 'play', playT);
     } else {
-      const s = playStep({ pos: store.get(), pause, done: false }, dt, speed, pointPos(), length);
-      pause = s.pause;
-      done = s.done;
+      const s = playStep(
+        { pos: store.get(), atPoint: false, done: false },
+        dt,
+        speed,
+        pointPos(),
+        length,
+      );
+      stop = s.atPoint || s.done;
       store.set(s.pos, 'play');
     }
-    if (done) stopPlay();
+    if (stop) stopPlay();
     else raf = requestAnimationFrame(frame);
   }
   function startPlay(): void {
@@ -763,7 +767,6 @@ export function mountHikeView(
       store.set(0, 'play');
     }
     playing = true;
-    pause = 0;
     lastTs = 0;
     playBtn.textContent = '❚❚ Пауза';
     raf = requestAnimationFrame(frame);
