@@ -2,6 +2,7 @@
 
 import { createHike } from '../api/hikes';
 import { ImportError } from '../parse/types';
+import { navigate } from '../router';
 import { summarizeDays } from '../track/days';
 import { importTrackFile, type ImportStage } from '../track/import';
 import type { ProcessedTrack } from '../track/process';
@@ -18,6 +19,7 @@ import {
   plural,
 } from '../ui/format';
 import { trackSvg } from '../ui/track-svg';
+import { handOffUpload } from './pending-upload';
 
 const STAGE_TEXT: Record<ImportStage, string> = {
   read: 'Читаю файл…',
@@ -187,8 +189,13 @@ export function renderNewHike(root: HTMLElement): void {
       status.className = 'status';
       status.textContent = 'Сохраняю…';
       try {
-        await createHike({ processed: r, title: name, file, withWaypoints: withWaypoints.checked });
-        showSaved(name);
+        const id = await createHike({
+          processed: r,
+          title: name,
+          file,
+          withWaypoints: withWaypoints.checked,
+        });
+        showSaved(id, name);
       } catch (err) {
         save.disabled = false;
         status.className = 'status status-error';
@@ -218,14 +225,34 @@ export function renderNewHike(root: HTMLElement): void {
     );
   }
 
-  function showSaved(title: string): void {
+  /** Поход сохранён — сразу предлагаем фото (раздел 7 ТЗ): выбрал файлы — открываем поход с загрузкой. */
+  function showSaved(id: string, title: string): void {
+    const url = `/hikes/${id}`;
+    const input = h('input', {
+      type: 'file',
+      multiple: true,
+      accept: 'image/*,video/*,.heic,.heif',
+      class: 'visually-hidden',
+    });
+    input.addEventListener('change', () => {
+      const files = [...(input.files ?? [])];
+      input.value = '';
+      if (!files.length) return;
+      handOffUpload(id, files);
+      navigate(url);
+    });
     content.replaceChildren(
       h('p', { class: 'status', role: 'status' }, `Поход «${title}» сохранён.`),
-      h('p', { class: 'muted' }, 'Теперь можно добавить фото — загрузка фото появится на этапе 4.'),
+      h(
+        'p',
+        { class: 'muted' },
+        'Теперь добавь фото и видео — они сами встанут на маршрут по времени и месту съёмки, перед сохранением можно поправить.',
+      ),
       h(
         'div',
         { class: 'actions' },
-        h('button', { type: 'button', class: 'btn btn-primary', disabled: true }, 'Загрузить фото'),
+        h('label', { class: 'btn btn-primary' }, 'Загрузить фото и видео', input),
+        h('a', { href: url, class: 'btn btn-ghost', 'data-link': true }, 'Открыть поход'),
         h('a', { href: '/', class: 'btn btn-ghost', 'data-link': true }, 'К походам'),
       ),
     );

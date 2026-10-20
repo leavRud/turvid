@@ -43,6 +43,7 @@ import { isViewerOpen, openViewer } from '../ui/viewer';
 import { createHikeMenu } from './hike-menu';
 import { createHikeTitle } from './hike-title';
 import { createPanel, type PlaceInfo, type UploadReport } from './hike-panel';
+import { takeUpload } from './pending-upload';
 import { isReviewOpen, openReview } from './photo-review';
 
 /** Как часто переписывать ?pos= в адресе, мс. */
@@ -766,6 +767,12 @@ export function mountHikeView(
   }
   playBtn.addEventListener('click', () => (playing ? stopPlay() : startPlay()));
   cleanups.push(stopPlay);
+
+  // Пришли с «Нового похода» с выбранными фото — сразу запускаем загрузку с автораскладкой.
+  if (editable) {
+    const handed = takeUpload(hike.id);
+    if (handed.length) void autoUpload(handed);
+  }
 
   return () => cleanups.forEach((c) => c());
 }
