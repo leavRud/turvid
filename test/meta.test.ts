@@ -6,24 +6,39 @@ const utc = (iso: string): number => Date.parse(iso) / 1000;
 const MSK = 'Europe/Moscow';
 
 describe('время из имени файла', () => {
-  it('Telegram Desktop', () => {
-    expect(timeFromFilename('photo_2026-10-17_14-32-05.jpg', MSK)).toBe(
-      utc('2026-10-17T11:32:05Z'),
-    );
-    expect(timeFromFilename('photo_2026-10-17_14-32-05 (2).jpg', MSK)).toBe(
-      utc('2026-10-17T11:32:05Z'),
-    );
+  const at = utc('2026-10-17T11:32:05Z');
+  const exact = { t: at, approx: false };
+  const approx = { t: at, approx: true };
+
+  it('мессенджеры — время отправки, примерное', () => {
+    expect(timeFromFilename('photo_2026-10-17_14-32-05.jpg', MSK)).toEqual(approx);
+    expect(timeFromFilename('photo_2026-10-17_14-32-05 (2).jpg', MSK)).toEqual(approx);
+    expect(timeFromFilename('video_2026-10-17_14-32-05.mp4', MSK)).toEqual(approx);
+    expect(timeFromFilename('WhatsApp Image 2026-10-17 at 14.32.05.jpeg', MSK)).toEqual(approx);
   });
 
-  it('камеры Android и Samsung', () => {
-    expect(timeFromFilename('IMG_20261017_143205.jpg', MSK)).toBe(utc('2026-10-17T11:32:05Z'));
-    expect(timeFromFilename('VID_20261017_143205.mp4', MSK)).toBe(utc('2026-10-17T11:32:05Z'));
-    expect(timeFromFilename('20261017_143205.jpg', MSK)).toBe(utc('2026-10-17T11:32:05Z'));
+  it('камеры Android, Pixel, Samsung, скриншоты — точное', () => {
+    expect(timeFromFilename('IMG_20261017_143205.jpg', MSK)).toEqual(exact);
+    expect(timeFromFilename('VID_20261017_143205.mp4', MSK)).toEqual(exact);
+    expect(timeFromFilename('20261017_143205.jpg', MSK)).toEqual(exact);
+    expect(timeFromFilename('PXL_20261017_143205123.jpg', MSK)).toEqual(exact);
+    expect(timeFromFilename('MVIMG_20261017_143205.jpg', MSK)).toEqual(exact);
+    expect(timeFromFilename('IMG_20261017_143205_HDR.jpg', MSK)).toEqual(exact);
+    expect(timeFromFilename('Screenshot_20261017-143205.png', MSK)).toEqual(exact);
   });
 
-  it('незнакомое имя и мусор — null', () => {
+  it('выгрузки из облаков: дата и время через разделители', () => {
+    expect(timeFromFilename('2026-10-17 14.32.05.jpg', MSK)).toEqual(exact);
+    expect(timeFromFilename('2026-10-17_14-32-05.heic', MSK)).toEqual(exact);
+    expect(timeFromFilename('Снимок экрана 2026-10-17 в 14.32.05.png', MSK)).toEqual(exact);
+    expect(timeFromFilename('DCIM/2026-10-17T14:32:05.jpg', MSK)).toEqual(exact);
+  });
+
+  it('незнакомое имя, только дата и мусор — null', () => {
     expect(timeFromFilename('DSC00042.JPG', MSK)).toBeNull();
     expect(timeFromFilename('IMG_20261399_143205.jpg', MSK)).toBeNull();
+    expect(timeFromFilename('IMG_19991017_143205.jpg', MSK)).toBeNull();
+    expect(timeFromFilename('IMG-20261017-WA0012.jpg', MSK)).toBeNull();
     expect(timeFromFilename('photo.jpg', MSK)).toBeNull();
   });
 });

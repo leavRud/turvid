@@ -7,7 +7,7 @@ import { readVideoMeta } from './mp4-meta';
 export interface MediaMeta {
   /** Секунды Unix. */
   takenAt: number | null;
-  /** Время взято из имени файла — примерное (у Telegram это время отправки). */
+  /** Время примерное: из имени файла от мессенджера (там время отправки, а не съёмки). */
   approx: boolean;
   lat: number | null;
   lon: number | null;
@@ -21,12 +21,12 @@ export async function readMediaMeta(
   const base =
     kind === 'video' ? await readVideoMeta(file) : await readPhotoMeta(file, hikeTimeZone);
   const meta: MediaMeta = { ...base, approx: false };
-  // Ни времени, ни координат — так бывает после мессенджера; пробуем имя файла.
-  if (meta.takenAt === null && meta.lat === null) {
+  // Времени в самом файле нет (мессенджер, облако, скриншот) — пробуем имя файла.
+  if (meta.takenAt === null) {
     const fromName = timeFromFilename(file.name, hikeTimeZone);
     if (fromName !== null) {
-      meta.takenAt = fromName;
-      meta.approx = true;
+      meta.takenAt = fromName.t;
+      meta.approx = fromName.approx;
     }
   }
   return meta;
