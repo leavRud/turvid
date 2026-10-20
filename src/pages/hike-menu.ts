@@ -34,7 +34,11 @@ export function createHikeMenu(hike: Hike, handlers: MenuHandlers): HTMLElement 
   };
 
   // Поделиться
-  const shareToggle = h('input', { type: 'checkbox', checked: token !== null });
+  const shareToggle = h('input', {
+    type: 'checkbox',
+    checked: token !== null,
+    'aria-label': 'Ссылка для просмотра без входа',
+  });
   const linkField = h('input', { type: 'text', readonly: true, 'aria-label': 'Ссылка на поход' });
   const copyBtn = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Скопировать');
   const linkRow = h('div', { class: 'menu-row' }, linkField, copyBtn);

@@ -64,7 +64,14 @@ export function openViewer(items: ViewerItem[], startIndex: number): void {
             playsinline: true,
             class: 'viewer-media',
           })
-        : h('img', { src: m.url, alt: item.caption, class: 'viewer-media', decoding: 'async' }),
+        : // draggable=false: свайп мышью листает, а не тащит картинку.
+          h('img', {
+            src: m.url,
+            alt: item.caption,
+            class: 'viewer-media',
+            decoding: 'async',
+            draggable: 'false',
+          }),
     );
     caption.textContent = item.caption;
     counter.textContent = items.length > 1 ? `${index + 1} / ${items.length}` : '';

@@ -592,8 +592,17 @@ export function mountHikeView(
     const pos = store.get();
     const point = points.find((p) => Math.abs(p.pos_m - pos) < 0.5);
     if (!point) return badgeText(pos);
-    const n = mediaOf(point.id).length;
-    return `${point.title || 'Точка'}${n ? ` · ${n} фото` : ''} · ${formatKm(point.pos_m)}`;
+    const items = mediaOf(point.id);
+    const videos = items.filter((m) => m.kind === 'video').length;
+    const photos = items.length - videos;
+    return [
+      point.title || 'Точка',
+      photos ? `${photos} фото` : null,
+      videos ? `${videos} видео` : null,
+      formatKm(point.pos_m),
+    ]
+      .filter(Boolean)
+      .join(' · ');
   };
   sheet.setTitle(sheetTitle());
 
