@@ -33,7 +33,9 @@
   --color-speed-2: #6fae7c;
   --color-speed-3: #2f6f4f;
   --map-height: 55vh;
-  --map-height-desktop: calc(100vh - 300px);
+  /* Компьютер: экран похода по высоте окна, карта — остаток; ниже этой высоты окна страница листается. */
+  --hike-min-height-desktop: 560px;
+  --map-min-height-desktop: 240px;
   --strip-height: 64px;
   --panel-width: 320px;
   --arrow-size: 44px;
@@ -607,23 +609,38 @@ h2 {
 }
 
 @media (min-width: 900px) {
+  /* Экран похода ровно по высоте окна: шапка и кнопки видны всегда,
+     карта забирает остаток, панель справа листается сама. */
+  .hike-view {
+    height: 100vh;
+    height: 100dvh;
+    min-height: var(--hike-min-height-desktop);
+  }
+
   .hike-body {
+    flex: 1;
+    min-height: 0;
     flex-direction: row;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
   .hike-main {
     flex: 1;
+    min-height: 0;
   }
 
   .hike-map {
-    height: var(--map-height-desktop);
-    min-height: 360px;
+    flex: 1;
+    height: auto;
+    min-height: var(--map-min-height-desktop);
   }
 
   .sheet {
     flex: none;
     width: var(--panel-width);
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 }
 
