@@ -2,7 +2,14 @@
 // Точки и фото меняются на лету (этап 4): после каждого изменения обновляются карта, полоса и панель.
 
 import { getHike } from '../api/hikes';
-import { deleteMedia, moveMedia, reorderMedia, storageUsage, uploadMedia } from '../api/media';
+import {
+  deleteMedia,
+  deleteMediaMany,
+  moveMedia,
+  reorderMedia,
+  storageUsage,
+  uploadMedia,
+} from '../api/media';
 import { createPoint, deletePoint, updatePoint } from '../api/points';
 import { createHikeMap, type HikeMap } from '../map/hike-map';
 import { ATTACH_M, layoutMedia, type Placement } from '../photos/placement';
@@ -265,9 +272,11 @@ export function mountHikeView(
     unsorted: () => unsortedMedia(),
     autoUpload: (files) => void autoUpload(files),
     placeHere: (m) => placeMedia(m, store.get()),
-    async removeMedia(m) {
-      await deleteMedia(m);
-      media = media.filter((x) => x.id !== m.id);
+    async removeMedia(list) {
+      // Если оборвётся на середине — повторное удаление безопасно: уже удалённого просто нет.
+      await deleteMediaMany(list);
+      const gone = new Set(list.map((m) => m.id));
+      media = media.filter((x) => !gone.has(x.id));
       dataChanged();
       panel.refreshStorage();
     },

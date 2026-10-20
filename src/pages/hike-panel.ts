@@ -8,12 +8,15 @@ import type { MediaItem, Point } from '../types';
 import { h } from '../ui/dom';
 import { MEDIA_DRAG_TYPE } from '../ui/drag';
 import { errorText } from '../ui/errors';
-import { formatBytes, formatClock, formatKm } from '../ui/format';
+import { formatBytes, formatClock, formatKm, plural } from '../ui/format';
 
 /** Позиция ближе этого к точке — стоим на точке, м. */
 const ON_POINT_M = 0.5;
 /** Бесплатно в Supabase Storage — 1 ГБ. */
 const SUPABASE_QUOTA_BYTES = 1024 ** 3;
+
+/** «3 файла»: в лотке и фото, и видео. */
+const photosText = (n: number): string => `${n} ${plural(n, ['файл', 'файла', 'файлов'])}`;
 /** Примерная цена горячего хранения в VK Cloud, ₽ за ГБ в месяц (сверить с прайсом). */
 const S3_RUB_PER_GB_MONTH = 2.3;
 
@@ -45,7 +48,8 @@ export interface PanelContext {
   autoUpload(files: File[]): void;
   /** Положить фото из лотка на трек в текущее место. */
   placeHere(media: MediaItem): Promise<void>;
-  removeMedia(media: MediaItem): Promise<void>;
+  /** Удалить насовсем (из лотка — сразу несколько). */
+  removeMedia(media: MediaItem[]): Promise<void>;
   openUnsorted(index: number): void;
   createPointHere(): Promise<Point>;
   savePoint(
@@ -131,8 +135,8 @@ export function createPanel(ctx: PanelContext): Panel {
     storageLine,
   );
 
-  /** Выбранное в лотке фото. */
-  let selectedTray: string | null = null;
+  /** Выбранные в лотке фото (id): можно несколько — положить или удалить разом. */
+  const selectedTray = new Set<string>();
 
   /** Что сейчас нарисовано в body: точка (id), правка точки или «между точками». */
   let shown: string | null = null;
@@ -472,9 +476,12 @@ export function createPanel(ctx: PanelContext): Panel {
     // Лоток неразобранных — только у владельца, по публичной ссылке его нет.
     if (!ctx.editable) return;
     const items = ctx.unsorted();
-    if (selectedTray && !items.some((m) => m.id === selectedTray)) selectedTray = null;
-    placeHereBtn.textContent = `Положить сюда · ${formatKm(ctx.store.get())}`;
-    const key = `${items.map((m) => m.id).join(',')}|${selectedTray ?? ''}`;
+    const ids = new Set(items.map((m) => m.id));
+    for (const id of [...selectedTray]) if (!ids.has(id)) selectedTray.delete(id);
+    const selected = items.filter((m) => selectedTray.has(m.id));
+    const n = selected.length;
+    placeHereBtn.textContent = `Положить сюда${n > 1 ? ` ${n}` : ''} · ${formatKm(ctx.store.get())}`;
+    const key = `${items.map((m) => m.id).join(',')}|${[...selectedTray].join(',')}`;
     if (key === trayKey) return;
     trayKey = key;
     if (!items.length) {
@@ -482,10 +489,9 @@ export function createPanel(ctx: PanelContext): Panel {
       return;
     }
     const status = h('p', { class: 'status', role: 'status' });
-    const selected = items.find((m) => m.id === selectedTray) ?? null;
-    const run = async (action: () => Promise<void>): Promise<void> => {
+    const run = async (text: string, action: () => Promise<void>): Promise<void> => {
       status.className = 'status';
-      status.textContent = 'Сохраняю…';
+      status.textContent = text;
       try {
         await action();
       } catch (err) {
@@ -493,15 +499,53 @@ export function createPanel(ctx: PanelContext): Panel {
         status.textContent = errorText(err);
       }
     };
-    placeHereBtn.onclick = selected ? () => void run(() => ctx.placeHere(selected)) : null;
-    const open = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Открыть');
-    const del = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Удалить');
-    if (selected) {
-      open.addEventListener('click', () => ctx.openUnsorted(items.indexOf(selected)));
-      del.addEventListener('click', () => {
-        if (window.confirm('Удалить это фото насовсем?')) void run(() => ctx.removeMedia(selected));
+    /** Удалить насовсем — после подтверждения. */
+    const remove = (list: MediaItem[], question: string): void => {
+      if (!window.confirm(question)) return;
+      void run(`Удаляю ${photosText(list.length)}…`, async () => {
+        await ctx.removeMedia(list);
+        for (const m of list) selectedTray.delete(m.id);
       });
-    }
+    };
+    placeHereBtn.onclick = n
+      ? () =>
+          void run('Сохраняю…', async () => {
+            for (const m of selected) {
+              await ctx.placeHere(m);
+              selectedTray.delete(m.id);
+            }
+          })
+      : null;
+    const open = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Открыть');
+    const first = selected[0];
+    if (first) open.addEventListener('click', () => ctx.openUnsorted(items.indexOf(first)));
+    const del = h(
+      'button',
+      { type: 'button', class: 'btn btn-ghost' },
+      n > 1 ? `Удалить выбранные (${n})` : 'Удалить',
+    );
+    del.addEventListener('click', () =>
+      remove(selected, n > 1 ? `Удалить ${photosText(n)} насовсем?` : 'Удалить это фото насовсем?'),
+    );
+    const allSelected = n === items.length;
+    const selectAll = h(
+      'button',
+      { type: 'button', class: 'btn btn-ghost' },
+      allSelected ? 'Снять выбор' : 'Выбрать все',
+    );
+    selectAll.addEventListener('click', () => {
+      if (allSelected) selectedTray.clear();
+      else for (const m of items) selectedTray.add(m.id);
+      renderTray();
+    });
+    const delAll = h(
+      'button',
+      { type: 'button', class: 'btn btn-ghost btn-ghost-danger' },
+      `Удалить все (${items.length})`,
+    );
+    delAll.addEventListener('click', () =>
+      remove(items, `Удалить все неразобранные — ${photosText(items.length)} — насовсем?`),
+    );
     tray.replaceChildren(
       h('h2', { class: 'section-title' }, `Неразобранные (${items.length})`),
       h(
@@ -514,13 +558,13 @@ export function createPanel(ctx: PanelContext): Panel {
               type: 'button',
               class: 'thumb tray-thumb',
               draggable: 'true',
-              'aria-pressed': String(m.id === selectedTray),
-              'aria-label': 'Выбрать фото',
+              'aria-pressed': String(selectedTray.has(m.id)),
+              'aria-label': m.kind === 'video' ? 'Выбрать видео' : 'Выбрать фото',
             },
             h('img', { src: m.thumbUrl, alt: '', loading: 'lazy', draggable: 'false' }),
           );
           b.addEventListener('click', () => {
-            selectedTray = selectedTray === m.id ? null : m.id;
+            if (!selectedTray.delete(m.id)) selectedTray.add(m.id);
             renderTray();
           });
           // На компьютере фото можно перетащить прямо на трек.
@@ -531,13 +575,14 @@ export function createPanel(ctx: PanelContext): Panel {
           return b;
         }),
       ),
-      selected
-        ? h('div', { class: 'actions' }, placeHereBtn, open, del)
+      n
+        ? h('div', { class: 'actions' }, placeHereBtn, n === 1 ? open : null, del)
         : h(
             'p',
             { class: 'muted small-text' },
-            'Выбери фото и поставь стрелку на место — или перетащи фото на трек на карте.',
+            'Выбери фото (можно несколько) и поставь стрелку на место — или перетащи фото на трек на карте.',
           ),
+      h('div', { class: 'actions' }, selectAll, delAll),
       status,
     );
   }

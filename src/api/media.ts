@@ -233,6 +233,32 @@ export async function deleteMedia(m: Media): Promise<void> {
   await removeFiles(m);
 }
 
+/** Столько строк удаляем одним запросом: id в адресе запроса, адрес не бесконечный. */
+const DELETE_BATCH = 100;
+
+/**
+ * Удаляет много медиа пачками: строки — одним запросом на пачку, файлы S3 — по 200 ключей
+ * за вызов функции, файлы Supabase — одним remove. Сначала строки: файл без строки
+ * никому не виден, а строка без файла была бы битой картинкой.
+ */
+export async function deleteMediaMany(list: Media[]): Promise<void> {
+  for (const batch of chunks(list, DELETE_BATCH)) {
+    const { error } = await supabase
+      .from('media')
+      .delete()
+      .in(
+        'id',
+        batch.map((m) => m.id),
+      );
+    if (error) throw error;
+    const keysOf = (rows: Media[]): string[] => rows.flatMap((m) => [m.path, m.thumb_path]);
+    const inS3 = keysOf(batch.filter((m) => m.storage === 's3'));
+    for (const keys of chunks(inS3, S3_BATCH)) await callMedia({ action: 'delete', keys });
+    const inSupabase = keysOf(batch.filter((m) => m.storage !== 's3'));
+    if (inSupabase.length) await supabase.storage.from(BUCKET).remove(inSupabase);
+  }
+}
+
 /** Удаляет из S3 все файлы похода (перед удалением самого похода). */
 export async function deleteHikeS3Files(hikeId: string): Promise<void> {
   const { data, error } = await supabase
