@@ -122,6 +122,8 @@ export function createPanel(ctx: PanelContext): Panel {
   /** Что сейчас нарисовано в body: точка (id), правка точки или «между точками». */
   let shown: string | null = null;
   let editing: string | null = null;
+  /** Точку только что поставили и сразу открыли правку: отмена её убирает, если она пустая. */
+  let fresh: string | null = null;
   /** Идёт загрузка в эту точку — её карточку не перерисовываем. */
   let uploadingTo: string | null = null;
   const now = { km: h('dd', {}), day: h('dd', {}), time: h('dd', {}), ele: h('dd', {}) };
@@ -143,7 +145,7 @@ export function createPanel(ctx: PanelContext): Panel {
       create.disabled = true;
       try {
         const point = await ctx.createPointHere();
-        editing = point.id;
+        editing = fresh = point.id;
         update(true);
       } catch (err) {
         status.className = 'status status-error';
@@ -258,6 +260,7 @@ export function createPanel(ctx: PanelContext): Panel {
     });
     edit.addEventListener('click', () => {
       editing = point.id;
+      fresh = null;
       update(true);
     });
     del.addEventListener('click', async () => {
@@ -396,9 +399,29 @@ export function createPanel(ctx: PanelContext): Panel {
       h('div', { class: 'actions' }, save, cancel),
       status,
     );
-    cancel.addEventListener('click', () => {
-      editing = null;
-      update(true);
+    cancel.addEventListener('click', async () => {
+      const empty =
+        point.id === fresh &&
+        !point.title &&
+        !point.description &&
+        ctx.mediaOf(point.id).length === 0;
+      editing = fresh = null;
+      if (!empty) {
+        update(true);
+        return;
+      }
+      // Пустую точку, которую только что поставили, в базе не оставляем.
+      cancel.disabled = save.disabled = true;
+      try {
+        await ctx.deletePoint(point);
+      } catch (err) {
+        update(true);
+        const card = body.querySelector('.point-card .status');
+        if (card) {
+          card.className = 'status status-error';
+          card.textContent = `Не получилось убрать пустую точку: ${errorText(err)}`;
+        }
+      }
     });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -413,7 +436,7 @@ export function createPanel(ctx: PanelContext): Panel {
           order,
           removed,
         );
-        editing = null;
+        editing = fresh = null;
         update(true);
       } catch (err) {
         save.disabled = false;
@@ -591,7 +614,7 @@ export function createPanel(ctx: PanelContext): Panel {
     update: () => update(false),
     refresh: () => update(true),
     edit(pointId) {
-      editing = pointId;
+      editing = fresh = pointId;
       update(true);
     },
     refreshStorage,

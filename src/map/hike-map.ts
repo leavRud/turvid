@@ -20,6 +20,13 @@ import { h } from '../ui/dom';
 import { followStep } from './follow';
 import { followTheme, mapStyleUrl } from './style';
 import { MEDIA_DRAG_TYPE } from '../ui/drag';
+import {
+  LONG_PRESS_MS,
+  MOVE_TOLERANCE_PX,
+  idlePress,
+  pressStep,
+  type PressEvent,
+} from './long-press';
 
 // Воркер MapLibre ищется по относительному адресу, который Vite при сборке теряет; отдаём его явно.
 setWorkerUrl(mapWorkerUrl);
@@ -31,10 +38,6 @@ export const DRAG_WINDOW_M = 1000;
  * В ТЗ было 50 м, но на общем виде это доля пикселя; решили считать в пикселях (раздел 9 ТЗ).
  */
 export const DRAG_MAX_OFFSET_PX = 30;
-/** Долгое нажатие на карту, мс. */
-const LONG_PRESS_MS = 600;
-/** Палец сдвинулся больше — это уже не долгое нажатие и не клик, px. */
-const MOVE_TOLERANCE_PX = 8;
 
 type Coord = [number, number];
 
@@ -167,8 +170,16 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
     return [e.clientX - rect.left, e.clientY - rect.top];
   }
 
-  /** Ближайшее место трека к экранной точке в окне вокруг `around`; null — дальше 30 px. */
-  function placeNear(x: number, y: number, around: number | null): TrackPlace | null {
+  /**
+   * Ближайшее место трека к экранной точке в окне вокруг `around`;
+   * null — дальше `maxPx` (по умолчанию 30 px, а без окна — без ограничения).
+   */
+  function placeNear(
+    x: number,
+    y: number,
+    around: number | null,
+    maxPx = around === null ? Infinity : DRAG_MAX_OFFSET_PX,
+  ): TrackPlace | null {
     const ll = map.unproject([x, y]);
     const near = nearestOnTrack(
       track,
@@ -178,7 +189,7 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
     );
     if (!near) return null;
     const p = map.project([near.lon, near.lat]);
-    if (around !== null && Math.hypot(p.x - x, p.y - y) > DRAG_MAX_OFFSET_PX) return null;
+    if (Math.hypot(p.x - x, p.y - y) > maxPx) return null;
     return { pos: near.pos, lat: near.lat, lon: near.lon };
   }
 
@@ -347,35 +358,53 @@ export function createHikeMap(opts: HikeMapOptions): HikeMap {
     });
   }
 
-  // Долгое нажатие на карту — новая точка в ближайшем месте трека.
+  // Долгое нажатие на карту — новая точка в ближайшем месте трека, если он не дальше 30 px.
+  // Второй палец (щипок) отменяет нажатие; сама логика — в long-press.ts.
   if (opts.editable && opts.onLongPress) {
     const canvasBox = map.getCanvasContainer();
     let timer = 0;
-    let start: [number, number] | null = null;
-    const cancel = (): void => {
-      clearTimeout(timer);
-      start = null;
-    };
-    canvasBox.addEventListener('pointerdown', (e) => {
-      if (e.target !== map.getCanvas() || (e.pointerType === 'mouse' && e.button !== 0)) return;
-      start = [e.clientX, e.clientY];
-      const [x, y] = local(e);
+    let press = idlePress();
+    let at: [number, number] = [0, 0];
+    const feed = (e: PressEvent): void => {
+      const step = pressStep(press, e);
+      press = step.state;
+      if (step.action) clearTimeout(timer);
+      if (step.action !== 'start') return;
+      const [x, y] = at;
       timer = window.setTimeout(() => {
-        start = null;
-        const place = placeNear(x, y, null);
+        press = { ...press, press: null };
+        const place = placeNear(x, y, null, DRAG_MAX_OFFSET_PX);
         if (place) opts.onLongPress?.(place);
       }, LONG_PRESS_MS);
-    });
-    canvasBox.addEventListener('pointermove', (e) => {
-      if (start && Math.hypot(e.clientX - start[0], e.clientY - start[1]) > MOVE_TOLERANCE_PX) {
-        cancel();
-      }
-    });
-    canvasBox.addEventListener('pointerup', cancel);
-    canvasBox.addEventListener('pointercancel', cancel);
+    };
+    // Слушаем на погружении: маркеры гасят всплытие, а пальцы на них тоже считаются.
+    const capture = { capture: true };
+    canvasBox.addEventListener(
+      'pointerdown',
+      (e) => {
+        at = local(e);
+        feed({
+          type: 'down',
+          id: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          primary: e.isPrimary,
+          onMap: e.target === map.getCanvas() && (e.pointerType !== 'mouse' || e.button === 0),
+        });
+      },
+      capture,
+    );
+    canvasBox.addEventListener(
+      'pointermove',
+      (e) => feed({ type: 'move', id: e.pointerId, x: e.clientX, y: e.clientY }),
+      capture,
+    );
+    const up = (e: PointerEvent): void => feed({ type: 'up', id: e.pointerId });
+    canvasBox.addEventListener('pointerup', up, capture);
+    canvasBox.addEventListener('pointercancel', up, capture);
     // Долгое нажатие на телефоне не должно открывать меню браузера.
     canvasBox.addEventListener('contextmenu', (e) => e.preventDefault());
-    map.on('movestart', cancel);
+    map.on('movestart', () => feed({ type: 'abort' }));
   }
 
   // Фото из лотка неразобранных можно бросить на карту — встанет в ближайшее место трека.
