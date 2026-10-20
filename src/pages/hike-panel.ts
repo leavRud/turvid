@@ -2,6 +2,7 @@
 
 import { POINT_DESCRIPTION_MAX, POINT_TITLE_MAX } from '../api/points';
 import type { StorageUsage } from '../api/media';
+import { ZIP_ACCEPT } from '../photos/zip';
 import type { PositionStore } from '../player/store';
 import type { MediaItem, Point } from '../types';
 import { h } from '../ui/dom';
@@ -87,20 +88,34 @@ export function createPanel(ctx: PanelContext): Panel {
     accept: 'image/*,video/*,.heic,.heif',
     class: 'visually-hidden',
   });
-  autoInput.addEventListener('change', () => {
-    const files = [...(autoInput.files ?? [])];
-    autoInput.value = '';
-    if (files.length) ctx.autoUpload(files);
+  // ZIP — отдельной кнопкой: с .zip в общем accept Android открывает не галерею, а файлы.
+  const zipInput = h('input', {
+    type: 'file',
+    multiple: true,
+    accept: ZIP_ACCEPT,
+    class: 'visually-hidden',
   });
+  for (const input of [autoInput, zipInput]) {
+    input.addEventListener('change', () => {
+      const files = [...(input.files ?? [])];
+      input.value = '';
+      if (files.length) ctx.autoUpload(files);
+    });
+  }
   const autoButton = ctx.editable
     ? h(
         'div',
         { class: 'stack upload-all' },
-        h('label', { class: 'btn btn-primary' }, 'Загрузить фото и видео в поход', autoInput),
+        h(
+          'div',
+          { class: 'actions' },
+          h('label', { class: 'btn btn-primary' }, 'Загрузить фото и видео в поход', autoInput),
+          h('label', { class: 'btn btn-ghost' }, 'Из ZIP-архива', zipInput),
+        ),
         h(
           'p',
           { class: 'muted small-text' },
-          'Фото и видео сами встанут на маршрут по времени и месту съёмки — перед сохранением можно поправить. Видео — MP4, MOV или WebM до 50 МБ.',
+          'Фото и видео сами встанут на маршрут по времени и месту съёмки — перед сохранением можно поправить. Видео — MP4, MOV или WebM до 50 МБ, архив — до 1 ГБ.',
         ),
       )
     : null;

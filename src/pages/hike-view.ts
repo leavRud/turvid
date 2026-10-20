@@ -43,6 +43,7 @@ import { isViewerOpen, openViewer } from '../ui/viewer';
 import { createHikeMenu } from './hike-menu';
 import { createHikeTitle } from './hike-title';
 import { createPanel, type PlaceInfo, type UploadReport } from './hike-panel';
+import { expandZips, isZip } from '../photos/zip';
 import { takeUpload } from './pending-upload';
 import { isReviewOpen, openReview } from './photo-review';
 
@@ -334,13 +335,21 @@ export function mountHikeView(
    * Загрузка в поход целиком (этап 5): подготовить файлы (время, место, сжатие),
    * разложить по маршруту, показать экран проверки и только после «Сохранить» — грузить.
    */
-  async function autoUpload(files: File[]): Promise<void> {
+  async function autoUpload(picked: File[]): Promise<void> {
     const busy = h('div', { class: 'busy', role: 'status' }, 'Готовлю фото…');
     document.body.append(busy);
     const prepared = new Map<string, Prepared>();
     const names = new Map<string, string>();
     const errors: string[] = [];
+    let files = picked;
     try {
+      // ZIP-архивы — распаковать в фото и видео прямо здесь.
+      if (picked.some(isZip)) {
+        busy.textContent = 'Распаковываю архив…';
+        const unpacked = await expandZips(picked);
+        files = unpacked.files;
+        errors.push(...unpacked.warnings);
+      }
       const results = await runQueue(
         files,
         async (file, i) => {

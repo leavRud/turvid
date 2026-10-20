@@ -19,6 +19,7 @@ import {
   plural,
 } from '../ui/format';
 import { trackSvg } from '../ui/track-svg';
+import { ZIP_ACCEPT } from '../photos/zip';
 import { handOffUpload } from './pending-upload';
 
 const STAGE_TEXT: Record<ImportStage, string> = {
@@ -234,13 +235,22 @@ export function renderNewHike(root: HTMLElement): void {
       accept: 'image/*,video/*,.heic,.heif',
       class: 'visually-hidden',
     });
-    input.addEventListener('change', () => {
-      const files = [...(input.files ?? [])];
-      input.value = '';
-      if (!files.length) return;
-      handOffUpload(id, files);
-      navigate(url);
+    // ZIP — отдельной кнопкой: с .zip в общем accept Android открывает не галерею, а файлы.
+    const zipInput = h('input', {
+      type: 'file',
+      multiple: true,
+      accept: ZIP_ACCEPT,
+      class: 'visually-hidden',
     });
+    for (const picker of [input, zipInput]) {
+      picker.addEventListener('change', () => {
+        const files = [...(picker.files ?? [])];
+        picker.value = '';
+        if (!files.length) return;
+        handOffUpload(id, files);
+        navigate(url);
+      });
+    }
     content.replaceChildren(
       h('p', { class: 'status', role: 'status' }, `Поход «${title}» сохранён.`),
       h(
@@ -252,6 +262,7 @@ export function renderNewHike(root: HTMLElement): void {
         'div',
         { class: 'actions' },
         h('label', { class: 'btn btn-primary' }, 'Загрузить фото и видео', input),
+        h('label', { class: 'btn btn-ghost' }, 'Из ZIP-архива', zipInput),
         h('a', { href: url, class: 'btn btn-ghost', 'data-link': true }, 'Открыть поход'),
         h('a', { href: '/', class: 'btn btn-ghost', 'data-link': true }, 'К походам'),
       ),
