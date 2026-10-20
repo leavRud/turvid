@@ -1,4 +1,4 @@
-// Шторка снизу для панели точки на телефоне: краешек с заголовком, половина, почти весь экран.
+// Шторка снизу для панели точки на телефоне: краешек с заголовком или почти весь экран.
 // Тянется пальцем за край; щелчок по краю — открыть/свернуть. На широком экране — обычная панель.
 
 import { h } from './dom';
@@ -48,7 +48,7 @@ export function createSheet(
   function heights(): SheetHeights {
     const bottom = element.getBoundingClientRect().bottom || window.innerHeight;
     const full = Math.max(SHEET_PEEK_PX * 2, bottom - TOP_GAP_PX);
-    return { peek: SHEET_PEEK_PX, half: Math.round(full * 0.55), full };
+    return { peek: SHEET_PEEK_PX, full };
   }
 
   function apply(state: SheetState, animate = true): void {
