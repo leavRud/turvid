@@ -63,6 +63,9 @@
   --space-5: 40px;
   --gutter: 16px;
   --tap: 44px;
+  /* Свёрнутая подпись карты «i»: видимый размер и прозрачность (место для пальца — всё равно --tap). */
+  --attrib-icon: 20px;
+  --attrib-opacity: 0.45;
   --page-max: 960px;
   --page-narrow: 400px;
 }
@@ -1752,16 +1755,37 @@ body.review-open {
   }
 }
 
-/* Кнопка «i» с атрибуцией карты — тоже 44 px, чтобы попасть пальцем. */
+/* Подпись карты (лицензия OpenStreetMap) убрать нельзя; свёрнутая — маленькое полупрозрачное «i».
+   Видно 20 px, а место для пальца — невидимые 44 px вокруг. */
 .maplibregl-map .maplibregl-ctrl-attrib-button {
-  width: var(--tap);
-  height: var(--tap);
+  width: var(--attrib-icon);
+  height: var(--attrib-icon);
+  background-size: 100%;
   background-position: center;
   background-repeat: no-repeat;
 }
 
+.maplibregl-map .maplibregl-ctrl-attrib-button::after {
+  content: '';
+  position: absolute;
+  inset: calc((var(--attrib-icon) - var(--tap)) / 2);
+}
+
 .maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact {
-  min-height: var(--tap);
+  min-height: var(--attrib-icon);
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show) {
+  padding: 0 var(--attrib-icon) 0 0;
+  background: transparent;
+  opacity: var(--attrib-opacity);
+  transition: opacity 0.15s;
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show):hover,
+.maplibregl-map
+  .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show):focus-within {
+  opacity: 1;
 }
 
 /* Название похода с кнопкой ✎ */
