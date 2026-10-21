@@ -5,7 +5,7 @@ import globals from 'globals';
 
 export default tseslint.config(
   // Функции Supabase и Netlify работают в Deno — у них свои типы и окружение.
-  { ignores: ['dist', 'node_modules', 'supabase/functions', 'netlify/edge-functions'] },
+  { ignores: ['dist', '.pages', 'node_modules', 'supabase/functions', 'netlify/edge-functions'] },
   js.configs.recommended,
   ...tseslint.configs.strict,
   prettier,

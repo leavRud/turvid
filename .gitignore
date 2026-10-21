@@ -6,3 +6,4 @@ dist
 *.local
 .vercel
 .netlify
+.pages

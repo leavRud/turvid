@@ -20,6 +20,7 @@ const NAME_RE = /^[0-9a-f-]{36}(\.thumb)?\.[a-z0-9]{1,8}$/i;
 const MAX_KEYS = 200;
 /** Откуда браузеру можно грузить в бакет; переопределяется секретом S3_CORS_ORIGINS (через запятую). */
 const DEFAULT_ORIGINS = [
+  'https://leavrud.github.io',
   'https://turvid.netlify.app',
   'http://127.0.0.1:5173',
   'http://localhost:5173',

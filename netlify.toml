@@ -1,6 +1,10 @@
+# Сайт переехал на GitHub Pages (leavrud.github.io, npm run deploy): netlify.app в России
+# без VPN не открывается, а каждая сборка тратит 15 из 300 бесплатных кредитов в месяц.
+# ignore с кодом 0 — Netlify пропускает сборку (пропущенные кредиты не тратят).
 [build]
   command = "npm run build"
   publish = "dist"
+  ignore = "exit 0"
 
 [[redirects]]
   from = "/*"
