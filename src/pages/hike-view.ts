@@ -50,6 +50,7 @@ import { isViewerOpen, openViewer } from '../ui/viewer';
 import { createHikeMenu } from './hike-menu';
 import { createHikeTitle } from './hike-title';
 import { createPanel, type PlaceInfo, type UploadReport } from './hike-panel';
+import { dropDuplicates, duplicatesNote } from '../photos/dedupe';
 import { expandZips, isZip } from '../photos/zip';
 import { takeUpload } from './pending-upload';
 import { isReviewOpen, openReview } from './photo-review';
@@ -359,6 +360,12 @@ export function mountHikeView(
         files = unpacked.files;
         errors.push(...unpacked.warnings);
       }
+      // Одно и то же фото, сохранённое дважды, — грузим один раз.
+      busy.textContent = 'Ищу повторы…';
+      const { unique, duplicates } = await dropDuplicates(files);
+      files = unique;
+      const note = duplicatesNote(duplicates);
+      if (note) errors.push(note);
       const results = await runQueue(
         files,
         async (file, i) => {
@@ -515,7 +522,7 @@ export function mountHikeView(
   /** Загрузка выбранных файлов в точку: по 3 сразу, с повтором при обрыве связи. */
   async function uploadFiles(
     point: Point,
-    files: File[],
+    picked: File[],
     progress: (done: number, total: number) => void,
   ): Promise<UploadReport> {
     const started = performance.now();
@@ -523,6 +530,10 @@ export function mountHikeView(
     // Подготовка (сжатие) — один раз; при повторе грузим уже готовое.
     const prepared = new Map<number, Prepared>();
     const warnings: string[] = [];
+    // Одно и то же фото, выбранное дважды, — грузим один раз.
+    const { unique: files, duplicates } = await dropDuplicates(picked);
+    const note = duplicatesNote(duplicates);
+    if (note) warnings.push(note);
     const results = await runQueue(
       files,
       async (file, i) => {
