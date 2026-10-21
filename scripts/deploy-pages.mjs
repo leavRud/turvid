@@ -5,7 +5,7 @@
 //
 // Запуск: npm run deploy   (нужен .env с VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY)
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
@@ -22,10 +22,15 @@ const gitOut = (...args) =>
     .toString()
     .trim();
 
-execFileSync('npm', ['run', 'build'], { stdio: 'inherit', shell: true });
+execSync('npm run build', { stdio: 'inherit' });
 
 if (existsSync(DIR)) git('pull', '--ff-only');
 else execFileSync('git', ['clone', REPO, DIR], { stdio: 'inherit' });
+// Автор коммитов выкладки — тот же, что в этом репозитории (глобально git может быть не настроен).
+for (const key of ['user.name', 'user.email']) {
+  const value = execFileSync('git', ['config', key]).toString().trim();
+  git('config', key, value);
+}
 
 // Один раз: шахматы лежали в корне — переложить их в chessai/, ничего не удаляя.
 if (!existsSync(join(DIR, 'chessai')) && existsSync(join(DIR, 'app.js'))) {
