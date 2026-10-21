@@ -47,14 +47,47 @@ describe('placeOne', () => {
     expect(p.pos).toBeCloseTo(1000, 0);
   });
 
-  it('координаты важнее времени', () => {
+  it('время главнее: координаты с другого участка маршрута не перетягивают фото', () => {
+    // Снято на 100-й секунде, а GPS в фото — у 7-го километра (старый или чужой фикс).
     const p = placeOne(
       { id: 'a', takenAt: START + 100, lat: 60 + 7000 * M, lon: 30 },
       track,
       START,
     );
+    expect(p.by).toBe('time');
+    expect(p.pos).toBeCloseTo(100, 0);
+  });
+
+  it('координаты рядом по времени и у самого трека — уточняют место', () => {
+    // В 4000 с был на 4000 м (1 м/с); координаты — 4300 м: это 300 с пути, меньше COORDS_WINDOW_S.
+    const p = placeOne(
+      { id: 'a', takenAt: START + 4000, lat: 60 + 4300 * M, lon: 30.0005 },
+      track,
+      START,
+    );
     expect(p.by).toBe('coords');
-    expect(p.pos).toBeCloseTo(7000, 0);
+    expect(p.pos).toBeCloseTo(4300, 0);
+  });
+
+  it('грубые координаты (клетка «приблизительного местоположения») — по времени', () => {
+    // Координаты в нужном месте по треку, но в 1,5 км в стороне от него.
+    const lon = 30 + 1500 * M * 2;
+    const p = placeOne({ id: 'a', takenAt: START + 4000, lat: 60 + 4000 * M, lon }, track, START);
+    expect(p.by).toBe('time');
+    expect(p.pos).toBeCloseTo(4000, 0);
+    expect(p.far).toBe(false);
+  });
+
+  it('вне похода: у самого трека — по координатам, далеко — в неразобранные', () => {
+    const early = START - OUTSIDE_HIKE_S - 600;
+    expect(placeOne({ id: 'a', takenAt: early, lat: 60, lon: 30 }, track, START)).toMatchObject({
+      pos: 0,
+      by: 'coords',
+    });
+    expect(placeOne({ id: 'a', takenAt: early, lat: 59.9, lon: 30 }, track, START)).toMatchObject({
+      pos: null,
+      outside: true,
+    });
   });
 
   it('без координат — где был в этот момент', () => {

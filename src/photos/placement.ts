@@ -34,26 +34,48 @@ export interface Placement {
 }
 
 /**
- * Куда встаёт одно фото:
- * 1) есть координаты — ближайшее место трека (дальше 200 м — с пометкой);
- * 2) нет координат, есть время и у трека есть время — где был в этот момент;
- *    вне похода больше чем на 30 минут — в неразобранные;
+ * Координаты уточняют место по времени только в пределах столько секунд пути в обе стороны:
+ * время съёмки точное, а GPS в фото бывает старым или грубым («приблизительное
+ * местоположение» Android — клетка в пару километров), и тогда ближайшее к нему место трека —
+ * совсем другой участок маршрута.
+ */
+export const COORDS_WINDOW_S = 10 * 60;
+
+/**
+ * Куда встаёт одно фото (раздел 6 ТЗ, правило изменено 2026-10-22):
+ * 1) есть время и у трека есть время — где был в этот момент; если есть и координаты ближе
+ *    200 м к треку в пределах ±10 минут пути — уточняем по ним;
+ *    вне похода больше чем на 30 минут — по координатам, если они у самого трека, иначе
+ *    в неразобранные;
+ * 2) времени нет, есть координаты — ближайшее место трека (дальше 200 м — с пометкой);
  * 3) ни того ни другого — в неразобранные.
  */
 export function placeOne(input: PlaceInput, track: TrackData, startedAt: number | null): Placement {
   const base = { id: input.id, far: false, outside: false };
-  if (input.lat !== null && input.lon !== null) {
-    const near = nearestOnTrack(track, input.lat, input.lon);
-    if (near) return { ...base, pos: near.pos, by: 'coords', far: near.offset > FAR_FROM_TRACK_M };
-  }
+  const hasCoords = input.lat !== null && input.lon !== null;
+  const nearIn = (range?: { from: number; to: number }) =>
+    hasCoords ? nearestOnTrack(track, input.lat as number, input.lon as number, range) : null;
+
   if (input.takenAt !== null && startedAt !== null && track.t && track.t.length) {
     const t = input.takenAt - startedAt;
     const endT = track.t[track.t.length - 1] as number;
     if (t < -OUTSIDE_HIKE_S || t > endT + OUTSIDE_HIKE_S) {
+      // Снято не во время похода, но у самого трека (например, у старта до включения часов).
+      const near = nearIn();
+      if (near && near.offset <= FAR_FROM_TRACK_M) return { ...base, pos: near.pos, by: 'coords' };
       return { ...base, pos: null, by: null, outside: true };
     }
-    return { ...base, pos: posAtTime(track, Math.min(Math.max(t, 0), endT)), by: 'time' };
+    const at = Math.min(Math.max(t, 0), endT);
+    const near = nearIn({
+      from: posAtTime(track, Math.max(at - COORDS_WINDOW_S, 0)),
+      to: posAtTime(track, Math.min(at + COORDS_WINDOW_S, endT)),
+    });
+    if (near && near.offset <= FAR_FROM_TRACK_M) return { ...base, pos: near.pos, by: 'coords' };
+    return { ...base, pos: posAtTime(track, at), by: 'time' };
   }
+
+  const near = nearIn();
+  if (near) return { ...base, pos: near.pos, by: 'coords', far: near.offset > FAR_FROM_TRACK_M };
   return { ...base, pos: null, by: null };
 }
 
