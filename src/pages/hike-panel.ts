@@ -46,6 +46,10 @@ export interface PanelContext {
   describe(pos: number): PlaceInfo;
   /** Загрузить фото в поход с автораскладкой и экраном проверки. */
   autoUpload(files: File[]): void;
+  /** Разложить уже загруженные фото заново (тот же экран проверки). */
+  relayout(): void;
+  /** Есть ли в походе фото — иначе раскладывать нечего. */
+  hasMedia(): boolean;
   /** Положить фото из лотка на трек в текущее место. */
   placeHere(media: MediaItem): Promise<void>;
   /** Удалить насовсем (из лотка — сразу несколько). */
@@ -106,6 +110,18 @@ export function createPanel(ctx: PanelContext): Panel {
       if (files.length) ctx.autoUpload(files);
     });
   }
+  // Разложить уже загруженные фото заново — когда правило раскладки улучшилось.
+  const relayoutBtn = h(
+    'button',
+    { type: 'button', class: 'btn btn-ghost', hidden: !ctx.hasMedia() },
+    'Разложить заново',
+  );
+  relayoutBtn.addEventListener('click', () => {
+    const ok = window.confirm(
+      'Разложить все фото похода заново по времени и месту съёмки? Перед сохранением покажу, что куда встанет. Точки с названием или описанием останутся, пустые безымянные — удалятся.',
+    );
+    if (ok) ctx.relayout();
+  });
   const autoButton = ctx.editable
     ? h(
         'div',
@@ -115,6 +131,7 @@ export function createPanel(ctx: PanelContext): Panel {
           { class: 'actions' },
           h('label', { class: 'btn btn-primary' }, 'Загрузить фото и видео в поход', autoInput),
           h('label', { class: 'btn btn-ghost' }, 'Из ZIP-архива', zipInput),
+          relayoutBtn,
         ),
         h(
           'p',
@@ -590,6 +607,7 @@ export function createPanel(ctx: PanelContext): Panel {
   function renderList(): void {
     const pos = ctx.store.get();
     const points = ctx.points();
+    relayoutBtn.hidden = !ctx.hasMedia();
     renderTray();
     const key = points
       .map(

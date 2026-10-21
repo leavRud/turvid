@@ -272,6 +272,8 @@ export function mountHikeView(
     mediaOf,
     unsorted: () => unsortedMedia(),
     autoUpload: (files) => void autoUpload(files),
+    relayout: () => relayout(),
+    hasMedia: () => media.length > 0,
     placeHere: (m) => placeMedia(m, store.get()),
     async removeMedia(list) {
       // Если оборвётся на середине — повторное удаление безопасно: уже удалённого просто нет.
@@ -504,6 +506,117 @@ export function mountHikeView(
         if (failed.length) {
           window.alert(
             `Не загрузились ${failed.length} из ${uploads.length}:\n${failed.join('\n')}`,
+          );
+        }
+      },
+    });
+  }
+
+  /**
+   * «Разложить заново»: уже загруженные фото — по текущему правилу автораскладки, через тот же
+   * экран проверки. Ничего не перезагружается: меняются только точка и порядок у фото.
+   * Точки с названием или описанием остаются (фото могут в них прилипнуть), безымянные
+   * пустые после раскладки удаляются.
+   */
+  function relayout(): void {
+    const all = [...media];
+    if (!all.length) return;
+    const named = (p: Point): boolean => Boolean(p.title.trim() || p.description.trim());
+    const inputs = all.map((m) => ({
+      id: m.id,
+      takenAt: m.taken_at ? Date.parse(m.taken_at) / 1000 : null,
+      lat: m.lat,
+      lon: m.lon,
+    }));
+    const { placements, layout } = layoutMedia(
+      inputs,
+      track,
+      startedAt,
+      points.filter(named).map((p) => ({ id: p.id, pos: p.pos_m })),
+    );
+    const placementOf = new Map(placements.map((p) => [p.id, p]));
+    const pointOf = new Map(points.map((p) => [p.id, p]));
+
+    openReview({
+      track,
+      bbox: hike.bbox,
+      entries: all.map((m) => ({
+        key: m.id,
+        name: captionFor(m.point_id ? (pointOf.get(m.point_id) ?? null) : null, m),
+        thumbUrl: m.thumbUrl,
+        kind: m.kind,
+        placement: placementOf.get(m.id) as Placement,
+        approx: m.taken_approx,
+        noData: m.taken_approx || (m.taken_at === null && m.lat === null),
+      })),
+      layout,
+      pointTitles: new Map(points.map((p) => [p.id, p.title])),
+      km: formatKm,
+      errors: [],
+      onClose: () => undefined,
+      async onSave(result, progress) {
+        const target = new Map<string, string | null>();
+        for (const g of result.groups) {
+          let pointId = g.pointId;
+          if (!pointId) {
+            const p = pointAt(track, g.pos);
+            const created = await createPoint(
+              hike.id,
+              { pos_m: g.pos, lat: p.lat, lon: p.lon },
+              g.title,
+            );
+            points = [...points, created];
+            pointId = created.id;
+          }
+          for (const key of g.keys) target.set(key, pointId);
+        }
+        for (const key of result.unsorted) target.set(key, null);
+
+        // Порядок внутри точки — по времени съёмки.
+        const byId = new Map(all.map((m) => [m.id, m]));
+        const nextSort = new Map<string | null, number>();
+        const moves = [...target.entries()]
+          .map(([id, pointId]) => ({ m: byId.get(id) as MediaItem, pointId }))
+          .sort((a, b) => (a.m.taken_at ?? '￿').localeCompare(b.m.taken_at ?? '￿'))
+          .map((u) => {
+            const sort = nextSort.get(u.pointId) ?? 0;
+            nextSort.set(u.pointId, sort + 1);
+            return { ...u, sort };
+          })
+          .filter((u) => u.m.point_id !== u.pointId || u.m.sort !== u.sort);
+
+        progress(`Переношу: 0 из ${moves.length}`);
+        const results = await runQueue(
+          moves,
+          async (u) => {
+            await moveMedia(u.m.id, u.pointId, u.sort);
+            media = media.map((x) =>
+              x.id === u.m.id ? { ...x, point_id: u.pointId, sort: u.sort } : x,
+            );
+          },
+          {
+            concurrency: UPLOAD_CONCURRENCY,
+            attempts: UPLOAD_ATTEMPTS,
+            backoffMs: (attempt) => 1000 * 2 ** (attempt - 1),
+            retryable: isNetworkError,
+            onSettled: (_i, done, total) => progress(`Переношу: ${done} из ${total}`),
+          },
+        );
+        const failed = results.filter((r) => !r.ok).length;
+
+        // Безымянные точки, где больше нет фото, — убрать.
+        if (!failed) {
+          const used = new Set(media.map((m) => m.point_id));
+          for (const p of points.filter((p) => !named(p) && !used.has(p.id))) {
+            await deletePoint(p.id);
+            points = points.filter((x) => x.id !== p.id);
+          }
+        }
+        sortPoints();
+        dataChanged(true);
+        if (failed) {
+          window.alert(
+            `Не перенеслись ${failed} из ${moves.length} — нажми «Разложить заново» ещё раз.`,
           );
         }
       },
