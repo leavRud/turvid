@@ -1166,13 +1166,21 @@ body.viewer-open {
   display: flex;
   align-items: center;
   justify-content: center;
-  touch-action: pan-y;
+  /* Все жесты — свои: свайп, щипок, двойной тап (браузер не должен масштабировать страницу). */
+  touch-action: none;
+  overflow: hidden;
+}
+
+.viewer-stage.zoomed {
+  cursor: grab;
 }
 
 .viewer-media {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  transform-origin: center;
+  user-select: none;
 }
 
 .viewer-nav,
