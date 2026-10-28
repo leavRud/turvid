@@ -22,7 +22,12 @@ import {
   edgeScroll,
   followView,
   MIN_VIEW,
+  pacePaths,
+  paceSamples,
+  restSpans,
+  skyLayerOpacity,
   skyStops,
+  starsFor,
   panView,
   profilePath,
   speedBands,
@@ -207,6 +212,61 @@ describe('strip model', () => {
     // 9 км/ч, стоянка, 9 км/ч, ночь пропущена, во втором дне 1,8 км/ч.
     expect(bands.map((b) => b.level)).toEqual([3, 0, 3, 1]);
     expect(bands.some((b) => b.level === 0)).toBe(true);
+  });
+
+  it('небо слоями: день чистый, к ночи слои проявляются по очереди', () => {
+    expect(skyLayerOpacity(20)).toEqual([0, 0, 0, 0]);
+    // Золотой час наполовину (между 12° и 4°).
+    expect(skyLayerOpacity(8)).toEqual([0.5, 0, 0, 0]);
+    // Чуть выше горизонта: золото целиком, заря наполовину.
+    expect(skyLayerOpacity(1.5)).toEqual([1, 0.5, 0, 0]);
+    expect(skyLayerOpacity(-12)).toEqual([1, 1, 1, 1]);
+  });
+
+  it('звёзды — только там, где темно, и каждый раз одни и те же', () => {
+    const sky = (alt: number) =>
+      Array.from({ length: 50 }, (_, i) => ({ offset: i / 49, night: 0, alt }));
+    expect(starsFor(sky(20))).toEqual([]);
+    const night = starsFor(sky(-20));
+    expect(night.length).toBeGreaterThan(100);
+    expect(starsFor(sky(-20))).toEqual(night);
+    expect(night.every((s) => s.y >= 0 && s.y <= 1 && s.x >= 0 && s.x <= 1)).toBe(true);
+  });
+
+  it('темп: в ночь линии нет, днём — скорость, на привале — у дна', () => {
+    const a = timeAxis(track, summarizeDays(track));
+    const pace = paceSamples(track, a, 200);
+    const night = a.segments.find((s) => s.night)!;
+    const at = (x: number) =>
+      pace.reduce((b, p) => (Math.abs(p.x - x) < Math.abs(b.x - x) ? p : b));
+    expect(at((night.x0 + night.x1) / 2).kmh).toBeNull();
+    // Середина второго дня: 500 м за 1000 с — 1,8 км/ч.
+    expect(at(a.timeToX(50_500)).kmh).toBeCloseTo(1.8, 1);
+    // Середина остановки (200–800 с) — стоял.
+    expect(at(a.timeToX(500)).kmh).toBeLessThan(0.5);
+
+    const { line, area } = pacePaths(pace, 1000, 100);
+    // Два дня — два куска линии и две заливки.
+    expect(line.match(/M/g)).toHaveLength(2);
+    expect(area.match(/Z/g)).toHaveLength(2);
+  });
+
+  it('привал прямо перед ночёвкой входит в ночёвку, остальные — сами по себе', () => {
+    const a = timeAxis(track, summarizeDays(track));
+    const early = { start: 0, end: 1, durationS: 200 };
+    // Стоял с 200 с до конца дня (1000 с) — это уже ночёвка.
+    const lastOfDay = { start: 1, end: 3, durationS: 800 };
+    const spans = restSpans(track, [early, lastOfDay], a);
+    expect(spans.map((s) => s.kind)).toEqual(['stop', 'night']);
+    const night = spans[1]!;
+    expect(night.x0).toBeCloseTo(a.timeToX(200));
+    expect(night.durationS).toBe(50_000 - 200);
+    // Привал, кончившийся задолго до конца дня, ночёвку не трогает.
+    const mid = restSpans(track, [{ start: 1, end: 2, durationS: 600 }], a);
+    expect(mid.map((s) => [s.kind, s.durationS])).toEqual([
+      ['stop', 600],
+      ['night', 49_000],
+    ]);
   });
 
   it('отметки остановок', () => {

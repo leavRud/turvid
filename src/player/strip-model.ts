@@ -2,7 +2,7 @@
 
 import type { Stop } from '../track/stops';
 import type { TrackData } from '../types';
-import type { Axis } from './axis';
+import type { Axis, TimeAxis } from './axis';
 import { pointAt, posAtTime } from './position';
 import { daylight, sunAltitude } from './sun';
 
@@ -138,6 +138,8 @@ export interface NightStop {
   offset: number;
   /** 0 — светло, 1 — ночь. */
   night: number;
+  /** Высота солнца, °. */
+  alt: number;
 }
 
 /**
@@ -157,7 +159,7 @@ export function skyStops(
     const t = xToTime(x);
     const p = pointAt(track, posAtTime(track, t));
     const alt = sunAltitude((startedAt + t) * 1000, p.lat, p.lon);
-    out.push({ offset: x, night: 1 - daylight(alt) });
+    out.push({ offset: x, night: 1 - daylight(alt), alt });
   }
   return out;
 }
@@ -208,4 +210,170 @@ export function edgeScroll(f: number, zone: number): number {
   if (f < zone) return -Math.min((zone - f) / zone, 1);
   if (f > 1 - zone) return Math.min((f - (1 - zone)) / zone, 1);
   return 0;
+}
+
+// ——— Шкала времени: небо по солнцу, звёзды, темп линией, привалы и ночёвки ———
+
+/**
+ * Небо кладётся слоями поверх дневного цвета: золотой час, заря, сумерки, ночь.
+ * Слой k проявляется, пока солнце опускается от a0 до a1 (°), — так выходит плавный переход
+ * день → золото → заря → сумерки → ночь, а цвета остаются в CSS (светлая и тёмная тема).
+ */
+export const SKY_LAYERS = [
+  { name: 'golden', a0: 12, a1: 4 },
+  { name: 'dawn', a0: 4, a1: -1 },
+  { name: 'deep', a0: -1, a1: -6 },
+  { name: 'night', a0: -6, a1: -12 },
+] as const;
+
+const clamp01 = (v: number): number => Math.min(Math.max(v, 0), 1);
+
+/** Непрозрачность каждого слоя неба при этой высоте солнца, по порядку SKY_LAYERS. */
+export function skyLayerOpacity(alt: number): number[] {
+  return SKY_LAYERS.map((l) => clamp01((l.a0 - alt) / (l.a0 - l.a1)));
+}
+
+/** Насколько звёздно: 0 — светло, 1 — звёзды во всю силу (солнце ниже −12°). */
+export function starriness(alt: number): number {
+  return clamp01((-4 - alt) / 8);
+}
+
+export interface Star {
+  /** Доля оси 0..1. */
+  x: number;
+  /** Доля высоты сверху 0..1. */
+  y: number;
+  /** Диаметр, px. */
+  size: number;
+  opacity: number;
+}
+
+/**
+ * Звёзды по оси — там, где солнце ниже горизонта. Раскладка детерминированная (одна и та же
+ * при каждой перерисовке), гуще там, где темнее. `slots` — сколько мест под звезду по всей оси.
+ */
+export function starsFor(sky: NightStop[], slots = 1500, seed = 7): Star[] {
+  if (sky.length < 2) return [];
+  let state = seed;
+  const rnd = (): number => (state = (state * 1_103_515_245 + 12_345) % 2 ** 31) / 2 ** 31;
+  const stars: Star[] = [];
+  for (let i = 0; i < slots; i++) {
+    const x = (i + rnd()) / slots;
+    const sample = sky[Math.round(x * (sky.length - 1))] as NightStop;
+    const k = starriness(sample.alt);
+    const roll = rnd();
+    const y = rnd();
+    const size = 1 + rnd() * 1.5;
+    const opacity = 0.35 + rnd() * 0.65;
+    if (roll < k * 0.3) stars.push({ x, y, size, opacity: Math.round(opacity * k * 100) / 100 });
+  }
+  return stars;
+}
+
+export interface PaceSample {
+  /** Доля оси 0..1. */
+  x: number;
+  /** Сглаженная скорость, км/ч; null — ночной разрыв, трека нет. */
+  kmh: number | null;
+}
+
+/** Выше этой скорости линия темпа упирается в потолок, км/ч. */
+export const PACE_MAX_KMH = 6;
+/** Окно сглаживания скорости, с: шаги и мелкие заминки не дёргают линию. */
+export const PACE_WINDOW_S = 300;
+
+/** Скорость по оси времени — для линии темпа. */
+export function paceSamples(track: TrackData, axis: TimeAxis, samples = 600): PaceSample[] {
+  const out: PaceSample[] = [];
+  const half = PACE_WINDOW_S / 2;
+  for (let i = 0; i < samples; i++) {
+    const x = i / (samples - 1);
+    const night = axis.segments.some((s) => s.night && x > s.x0 && x < s.x1);
+    if (night) {
+      out.push({ x, kmh: null });
+      continue;
+    }
+    const t = axis.xToTime(x);
+    const d = posAtTime(track, t + half) - posAtTime(track, t - half);
+    out.push({ x, kmh: Math.max(0, (d / PACE_WINDOW_S) * 3.6) });
+  }
+  return out;
+}
+
+/**
+ * Линия темпа и заливка под ней в рамке width×height: внизу — стоял, вверху — PACE_MAX_KMH.
+ * Линия занимает нижнюю долю `amp` высоты; в ночной разрыв не тянется.
+ */
+export function pacePaths(
+  samples: PaceSample[],
+  width: number,
+  height: number,
+  amp = 0.5,
+): { line: string; area: string } {
+  const base = height - 2;
+  const y = (kmh: number): number =>
+    base - (Math.min(kmh, PACE_MAX_KMH) / PACE_MAX_KMH) * height * amp;
+  const fmt = (v: number): string => (Math.round(v * 10) / 10).toString();
+  let line = '';
+  let area = '';
+  let run: { x: number; kmh: number }[] = [];
+  const flush = (): void => {
+    if (run.length >= 2) {
+      const pts = run.map((s) => `${fmt(s.x * width)} ${fmt(y(s.kmh))}`).join('L');
+      const x0 = fmt((run[0] as { x: number }).x * width);
+      const x1 = fmt((run[run.length - 1] as { x: number }).x * width);
+      line += `M${pts}`;
+      area += `M${x0} ${base}L${pts}L${x1} ${base}Z`;
+    }
+    run = [];
+  };
+  for (const s of samples) {
+    if (s.kmh === null) flush();
+    else run.push({ x: s.x, kmh: s.kmh });
+  }
+  flush();
+  return { line, area };
+}
+
+export interface RestSpan {
+  kind: 'stop' | 'night';
+  /** Доли оси. */
+  x0: number;
+  x1: number;
+  durationS: number;
+}
+
+/** Привал кончился не раньше чем за столько до конца дня — он часть ночёвки, с. */
+export const NIGHT_MERGE_S = 120;
+/** Привалы короче — без подписи (так решили по макету), с. */
+export const REST_LABEL_MIN_S = 15 * 60;
+
+/**
+ * Привалы и ночёвки для подписей на шкале времени. Привал, которым кончился день (сразу
+ * перед ночёвкой), входит в ночёвку: она начинается с него, и длительность — вместе с ним.
+ */
+export function restSpans(track: TrackData, stops: Stop[], axis: TimeAxis): RestSpan[] {
+  const t = track.t;
+  if (!t) return [];
+  const nights = axis.segments.filter((s) => s.night);
+  const merged = new Set<Stop>();
+  const out: RestSpan[] = nights.map((n) => {
+    const before = stops.find((s) => {
+      const end = t[s.end] as number;
+      return end <= n.t0 && n.t0 - end <= NIGHT_MERGE_S;
+    });
+    if (before) merged.add(before);
+    const t0 = before ? (t[before.start] as number) : n.t0;
+    return { kind: 'night', x0: axis.timeToX(t0), x1: n.x1, durationS: n.t1 - t0 };
+  });
+  for (const s of stops) {
+    if (merged.has(s)) continue;
+    out.push({
+      kind: 'stop',
+      x0: axis.timeToX(t[s.start] as number),
+      x1: axis.timeToX(t[s.end] as number),
+      durationS: s.durationS,
+    });
+  }
+  return out.sort((a, b) => a.x0 - b.x0);
 }

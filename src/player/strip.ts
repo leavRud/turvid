@@ -1,23 +1,32 @@
 // Нижняя полоса: ползунок поверх профиля высоты, шкалы времени или шкалы километров.
 // Полосу можно масштабировать: колесо мыши, щипок двумя пальцами, кнопки «−» и «+».
+// Шкала времени: небо по солнцу со звёздами, темп линией, подписи привалов и ночёвок;
+// впереди ползунка — приглушено (видно пройденное).
 
 import type { DaySummary } from '../track/days';
 import type { Stop } from '../track/stops';
 import type { TrackData } from '../types';
 import { h } from '../ui/dom';
-import { formatKm, formatShortDate } from '../ui/format';
+import { formatDuration, formatKm, formatShortDate } from '../ui/format';
 import { distanceAxis, timeAxis, type Axis, type TimeAxis } from './axis';
 import { MAGNET_PX, magnetTarget } from './magnet';
 import type { PositionStore } from './store';
 import {
   edgeScroll,
   followView,
-  skyStops,
+  pacePaths,
+  paceSamples,
   panView,
   profilePath,
-  speedBands,
-  stopMarks,
+  REST_LABEL_MIN_S,
+  restSpans,
+  SKY_LAYERS,
+  skyLayerOpacity,
+  skyStops,
+  starsFor,
   zoomView,
+  type RestSpan,
+  type Star,
   type StripInfo,
   type StripMode,
   type View,
@@ -29,6 +38,11 @@ const VB_W = 1000;
 const VB_H = 100;
 /** Подписи ближе этого не показываем — налезут друг на друга, px. */
 const LABEL_MIN_GAP_PX = 72;
+/** Примерная ширина буквы подписи и поля плашки — чтобы подписи не налезали, px. */
+const LABEL_CHAR_PX = 6.2;
+const LABEL_PAD_PX = 14;
+/** Звёзды — только в верхней части полосы (ниже идёт линия темпа), доля высоты. */
+const STARS_TOP = 0.6;
 /** Зона у края полосы, где ползунок прокручивает приближенную полосу, px. */
 const EDGE_ZONE_PX = 32;
 /** Скорость прокрутки у самого края: столько ширин окна в секунду. */
@@ -104,6 +118,9 @@ export function createStrip(opts: StripOptions): Strip {
   let magnetic = opts.magnetic;
   /** Где стоит ползунок на оси: при перетаскивании — под пальцем, а не по позиции. */
   let thumbX = 0;
+  /** Шкала времени: звёзды и привалы с ночёвками — рисуются поверх, в пикселях. */
+  let stars: Star[] = [];
+  let rests: RestSpan[] = [];
 
   const svg = svgEl('svg', {
     class: 'strip-bg',
@@ -111,8 +128,11 @@ export function createStrip(opts: StripOptions): Strip {
     preserveAspectRatio: 'none',
     'aria-hidden': 'true',
   });
+  const starLayer = h('div', { class: 'strip-stars', 'aria-hidden': 'true' });
   const labels = h('div', { class: 'strip-labels', 'aria-hidden': 'true' });
   const marks = h('div', { class: 'strip-marks', 'aria-hidden': 'true' });
+  // Впереди ползунка — вуаль: пройденное ярко, будущее приглушено.
+  const veil = h('div', { class: 'strip-veil', 'aria-hidden': 'true' });
   const thumb = h('div', { class: 'strip-thumb' });
   const slider = h(
     'div',
@@ -125,8 +145,10 @@ export function createStrip(opts: StripOptions): Strip {
       'aria-valuemax': String(Math.round(length)),
     },
     svg,
+    starLayer,
     labels,
     marks,
+    veil,
     thumb,
   );
 
@@ -183,37 +205,75 @@ export function createStrip(opts: StripOptions): Strip {
     svg.replaceChildren();
     modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset['mode'] === mode)));
 
+    stars = [];
+    rests = [];
     if (mode === 'timeline') {
       const ta = timeAxis(track, opts.days);
       axis = ta;
       timeline = ta;
-      // Фон — небо одной лентой через всю ось, включая сон: видно рассвет и закат.
-      svg.append(rect(0, 1, 0, VB_H, 'strip-daylight'));
-      if (opts.startedAt !== null) {
-        const id = `strip-sky-${++gradientCounter}`;
-        const grad = svgEl('linearGradient', { id, x1: 0, x2: 1, y1: 0, y2: 0 });
-        for (const s of skyStops(track, opts.startedAt, ta.xToTime)) {
+      // Небо одной лентой через всю ось, включая сон: дневной цвет, поверх — золотой час,
+      // заря, сумерки и ночь с прозрачностью по высоте солнца там, где был в этот момент.
+      svg.append(rect(0, 1, 0, VB_H, 'strip-sky-day'));
+      const defs = svgEl('defs', {});
+      svg.append(defs);
+      /** Градиент по оси: у каждого отсчёта свой класс цвета и своя непрозрачность. */
+      const gradient = (cls: string, stops: { offset: number; opacity: number }[]): string => {
+        const id = `strip-grad-${++gradientCounter}`;
+        const grad = svgEl('linearGradient', {
+          id,
+          gradientUnits: 'userSpaceOnUse',
+          x1: 0,
+          x2: VB_W,
+          y1: 0,
+          y2: 0,
+        });
+        for (const st of stops) {
           grad.append(
             svgEl('stop', {
-              offset: Math.round(s.offset * 10_000) / 10_000,
-              class: 'strip-night-stop',
-              'stop-opacity': Math.round(s.night * 100) / 100,
+              offset: Math.round(st.offset * 10_000) / 10_000,
+              class: cls,
+              'stop-opacity': Math.round(st.opacity * 100) / 100,
             }),
           );
         }
-        const defs = svgEl('defs', {});
         defs.append(grad);
-        svg.append(defs);
-        const shade = rect(0, 1, 0, VB_H, '');
-        shade.setAttribute('fill', `url(#${id})`);
-        svg.append(shade);
+        return `url(#${id})`;
+      };
+      const sky = opts.startedAt !== null ? skyStops(track, opts.startedAt, ta.xToTime) : [];
+      if (sky.length) {
+        SKY_LAYERS.forEach((layer, k) => {
+          const r = rect(0, 1, 0, VB_H, '');
+          r.setAttribute(
+            'fill',
+            gradient(
+              `strip-sky-stop-${layer.name}`,
+              sky.map((st) => ({
+                offset: st.offset,
+                opacity: skyLayerOpacity(st.alt)[k] as number,
+              })),
+            ),
+          );
+          svg.append(r);
+        });
       }
-      for (const s of stopMarks(track, opts.stops, ta.timeToX)) {
-        svg.append(rect(s.x0, s.x1, 30, VB_H - 44, 'strip-stop'));
+      stars = starsFor(sky);
+
+      // Темп линией: выше — быстрее, привал — линия на дне, в ночь не тянется.
+      const pace = pacePaths(paceSamples(track, ta), VB_W, VB_H);
+      svg.append(svgEl('path', { d: pace.area, class: 'strip-pace-area' }));
+      const lineAttrs = { d: pace.line, 'vector-effect': 'non-scaling-stroke' };
+      svg.append(svgEl('path', { ...lineAttrs, class: 'strip-pace-line' }));
+      // Там, где стемнело, линия светлеет — второй слой поверх с прозрачностью «ночности».
+      if (sky.length) {
+        const night = svgEl('path', { ...lineAttrs, class: 'strip-pace-line' });
+        // Через style: цвет линии из CSS-класса перебил бы атрибут stroke.
+        night.style.stroke = gradient(
+          'strip-pace-night-stop',
+          sky.map((st) => ({ offset: st.offset, opacity: st.night })),
+        );
+        svg.append(night);
       }
-      for (const b of speedBands(track, ta.timeToX)) {
-        svg.append(rect(b.x0, b.x1, VB_H - 14, 14, `strip-speed speed-${b.level}`));
-      }
+      rests = restSpans(track, opts.stops, ta);
     } else if (mode === 'profile') {
       axis = distanceAxis(length);
       timeline = null;
@@ -234,6 +294,7 @@ export function createStrip(opts: StripOptions): Strip {
     svg.setAttribute('viewBox', `${view.a * VB_W} 0 ${(view.b - view.a) * VB_W} ${VB_H}`);
     labels.replaceChildren();
     marks.replaceChildren();
+    starLayer.replaceChildren();
     const width = slider.clientWidth || VB_W;
     const minGap = LABEL_MIN_GAP_PX / width;
 
@@ -244,17 +305,54 @@ export function createStrip(opts: StripOptions): Strip {
     };
 
     if (timeline) {
+      /** Занятые подписями отрезки в пикселях: следующая подпись не налезает. */
+      const taken: [number, number][] = [];
+      const fits = (left: number, w: number): boolean => {
+        if (left < 0 || left + w > width) return false;
+        if (taken.some(([a, b]) => left < b + 4 && left + w > a - 4)) return false;
+        taken.push([left, left + w]);
+        return true;
+      };
+      const textWidth = (text: string): number => text.length * LABEL_CHAR_PX + LABEL_PAD_PX;
+
       timeline.days.forEach((d, i) => {
         if (d.x1 < view.a || d.x0 > view.b) return;
         const date =
           opts.startedAt !== null ? formatShortDate(opts.startedAt + d.startT, opts.timezone) : '';
+        const text = `День ${i + 1}${date ? ` · ${date}` : ''}`;
         // Подпись дня — у его левого края, а если край за окном — у края окна.
-        label(
-          Math.max(toLocal(d.x0), 0),
-          `День ${i + 1}${date ? ` · ${date}` : ''}`,
-          'strip-label-day',
-        );
+        const f = Math.max(toLocal(d.x0), 0);
+        taken.push([f * width, f * width + textWidth(text)]);
+        label(f, text, 'strip-label-day');
       });
+
+      // Ночёвки — первыми, потом привалы от 15 минут, длинные раньше коротких.
+      const shown = rests
+        .filter((r) => r.kind === 'night' || r.durationS >= REST_LABEL_MIN_S)
+        .sort((a, b) =>
+          a.kind !== b.kind ? (a.kind === 'night' ? -1 : 1) : b.durationS - a.durationS,
+        );
+      for (const r of shown) {
+        const f = toLocal((r.x0 + r.x1) / 2);
+        if (f < 0 || f > 1) continue;
+        // Не влезает «ночёвка 14 ч 53 мин» — пробуем просто «14 ч 53 мин».
+        const time = formatDuration(r.durationS);
+        const text = [`${r.kind === 'night' ? 'ночёвка' : 'привал'} ${time}`, time].find((t) =>
+          fits(f * width - textWidth(t) / 2, textWidth(t)),
+        );
+        if (text) label(f, text, 'strip-label-rest');
+      }
+
+      for (const st of stars) {
+        const f = toLocal(st.x);
+        if (f < 0 || f > 1) continue;
+        const star = h('span', { class: 'strip-star' });
+        star.style.left = `${f * 100}%`;
+        star.style.top = `${st.y * STARS_TOP * 100}%`;
+        star.style.width = star.style.height = `${st.size}px`;
+        star.style.opacity = String(st.opacity);
+        starLayer.append(star);
+      }
     } else {
       const startM = axis.xToPos(view.a);
       const endM = axis.xToPos(view.b);
@@ -292,6 +390,7 @@ export function createStrip(opts: StripOptions): Strip {
     const f = toLocal(thumbX);
     thumb.hidden = f < -0.001 || f > 1.001;
     thumb.style.left = `${f * 100}%`;
+    veil.style.left = `${Math.min(Math.max(f, 0), 1) * 100}%`;
     const pos = store.get();
     slider.setAttribute('aria-valuenow', String(Math.round(pos)));
     slider.setAttribute('aria-valuetext', formatKm(pos));

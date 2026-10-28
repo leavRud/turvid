@@ -25,13 +25,19 @@
   --color-arrow-stroke: #ffffff;
   --color-strip-bg: #e9ebe6;
   --color-strip-daylight: #f1efdd;
-  --color-strip-night: #2c3557;
-  --color-strip-stop: rgb(0 0 0 / 14%);
   --color-strip-profile: #b9cfc0;
-  --color-speed-0: #b8bdb9;
-  --color-speed-1: #e3b04b;
-  --color-speed-2: #6fae7c;
-  --color-speed-3: #2f6f4f;
+  /* Шкала времени: небо по высоте солнца (слоями от дня к ночи), звёзды, линия темпа. */
+  --color-sky-day: #cfe6f3;
+  --color-sky-golden: #f5d39a;
+  --color-sky-dawn: #e7a27f;
+  --color-sky-deep: #24305e;
+  --color-sky-night: #0e1531;
+  --color-star: #ffffff;
+  --color-pace-line: #1c3a2a;
+  --color-pace-on-night: #e6f2ea;
+  --color-pace-fill: rgb(28 58 42 / 16%);
+  --color-strip-veil: rgb(246 245 241 / 58%);
+  --color-strip-label-bg: rgb(255 255 255 / 78%);
   --map-height: 55vh;
   /* Компьютер: экран похода по высоте окна, карта — остаток; ниже этой высоты окна страница листается. */
   --hike-min-height-desktop: 560px;
@@ -96,13 +102,18 @@
     --color-arrow-stroke: #0f1a14;
     --color-strip-bg: #1d2320;
     --color-strip-daylight: #3b4536;
-    --color-strip-night: #0b0e1a;
-    --color-strip-stop: rgb(255 255 255 / 16%);
     --color-strip-profile: #35503f;
-    --color-speed-0: #4a524e;
-    --color-speed-1: #b8892f;
-    --color-speed-2: #4f8e5d;
-    --color-speed-3: #6fbf8e;
+    --color-sky-day: #2b4558;
+    --color-sky-golden: #8c6b3c;
+    --color-sky-dawn: #8a4e3c;
+    --color-sky-deep: #121a3a;
+    --color-sky-night: #05081a;
+    --color-star: #ffffff;
+    --color-pace-line: #d7ecdf;
+    --color-pace-on-night: #d7ecdf;
+    --color-pace-fill: rgb(215 236 223 / 14%);
+    --color-strip-veil: rgb(20 24 22 / 58%);
+    --color-strip-label-bg: rgb(20 24 22 / 72%);
     --color-grip: #4a524e;
   }
 }
@@ -131,13 +142,18 @@
   --color-arrow-stroke: #0f1a14;
   --color-strip-bg: #1d2320;
   --color-strip-daylight: #3b4536;
-  --color-strip-night: #0b0e1a;
-  --color-strip-stop: rgb(255 255 255 / 16%);
   --color-strip-profile: #35503f;
-  --color-speed-0: #4a524e;
-  --color-speed-1: #b8892f;
-  --color-speed-2: #4f8e5d;
-  --color-speed-3: #6fbf8e;
+  --color-sky-day: #2b4558;
+  --color-sky-golden: #8c6b3c;
+  --color-sky-dawn: #8a4e3c;
+  --color-sky-deep: #121a3a;
+  --color-sky-night: #05081a;
+  --color-star: #ffffff;
+  --color-pace-line: #d7ecdf;
+  --color-pace-on-night: #d7ecdf;
+  --color-pace-fill: rgb(215 236 223 / 14%);
+  --color-strip-veil: rgb(20 24 22 / 58%);
+  --color-strip-label-bg: rgb(20 24 22 / 72%);
   --color-grip: #4a524e;
 }
 
@@ -846,12 +862,64 @@ h2 {
   fill: var(--color-strip-daylight);
 }
 
-.strip-night-stop {
-  stop-color: var(--color-strip-night);
+/* Небо шкалы времени: дневной цвет и слои поверх него (прозрачность — в градиенте). */
+.strip-sky-day {
+  fill: var(--color-sky-day);
 }
 
-.strip-stop {
-  fill: var(--color-strip-stop);
+.strip-sky-stop-golden {
+  stop-color: var(--color-sky-golden);
+}
+
+.strip-sky-stop-dawn {
+  stop-color: var(--color-sky-dawn);
+}
+
+.strip-sky-stop-deep {
+  stop-color: var(--color-sky-deep);
+}
+
+.strip-sky-stop-night {
+  stop-color: var(--color-sky-night);
+}
+
+.strip-stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.strip-star {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--color-star);
+  transform: translate(-50%, -50%);
+}
+
+/* Темп линией: выше — быстрее; толщина не меняется при масштабе полосы. */
+.strip-pace-area {
+  fill: var(--color-pace-fill);
+}
+
+.strip-pace-line {
+  fill: none;
+  stroke: var(--color-pace-line);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.strip-pace-night-stop {
+  stop-color: var(--color-pace-on-night);
+}
+
+/* Впереди ползунка — приглушено: пройденное ярко. */
+.strip-veil {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-strip-veil);
+  pointer-events: none;
 }
 
 .strip-profile {
@@ -864,22 +932,6 @@ h2 {
   width: 1px;
   height: 10px;
   background: var(--color-muted);
-}
-
-.speed-0 {
-  fill: var(--color-speed-0);
-}
-
-.speed-1 {
-  fill: var(--color-speed-1);
-}
-
-.speed-2 {
-  fill: var(--color-speed-2);
-}
-
-.speed-3 {
-  fill: var(--color-speed-3);
 }
 
 .strip-labels,
@@ -905,6 +957,15 @@ h2 {
   border-radius: var(--radius);
   background: var(--color-surface);
   color: var(--color-text);
+}
+
+/* Привал или ночёвка — по центру своего отрезка, на полупрозрачной плашке. */
+.strip-label-rest {
+  padding: 1px 6px;
+  border-radius: var(--radius);
+  background: var(--color-strip-label-bg);
+  color: var(--color-text);
+  transform: translateX(-50%);
 }
 
 .strip-label-km {
