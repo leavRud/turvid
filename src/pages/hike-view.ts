@@ -44,6 +44,7 @@ import {
   formatTime,
   plural,
 } from '../ui/format';
+import { confirmDialog } from '../ui/confirm-dialog';
 import { createSheet, SHEET_PEEK_PX } from '../ui/sheet';
 import { themeSwitcher } from '../ui/theme';
 import { isViewerOpen, openViewer } from '../ui/viewer';
@@ -781,6 +782,17 @@ export function mountHikeView(
       magnetic: magneticPos,
       editable,
       async onPointMove(point, place) {
+        // Точку легко сдвинуть случайно, листая карту, — без подтверждения не переносим.
+        const moved = await confirmDialog({
+          title: 'Передвинуть точку?',
+          text: `«${point.title || 'Без названия'}»: ${formatKm(point.pos_m)} → ${formatKm(place.pos)}.`,
+          ok: 'Передвинуть',
+          cancel: 'Оставить на месте',
+        });
+        if (!moved) {
+          map?.setPoints(points);
+          return;
+        }
         try {
           const wasHere = Math.abs(store.get() - point.pos_m) < 0.5;
           const saved = await updatePoint(point.id, {
