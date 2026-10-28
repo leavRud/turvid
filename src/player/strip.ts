@@ -333,14 +333,28 @@ export function createStrip(opts: StripOptions): Strip {
           a.kind !== b.kind ? (a.kind === 'night' ? -1 : 1) : b.durationS - a.durationS,
         );
       for (const r of shown) {
-        const f = toLocal((r.x0 + r.x1) / 2);
-        if (f < 0 || f > 1) continue;
-        // Не влезает «ночёвка 14 ч 53 мин» — пробуем просто «14 ч 53 мин».
+        // Привал на экране, px (видимая часть).
+        const a = Math.max(toLocal(r.x0), 0) * width;
+        const b = Math.min(toLocal(r.x1), 1) * width;
+        if (b <= a) continue;
+        // Середина занята (подпись дня, соседний привал) — сдвигаем подпись в пределах
+        // привала; не влезает «ночёвка 14 ч 53 мин» — пробуем просто «14 ч 53 мин».
+        const mid = (a + b) / 2;
+        const centers = [mid];
+        for (let d = 8; d <= (b - a) / 2; d += 8) centers.push(mid + d, mid - d);
         const time = formatDuration(r.durationS);
-        const text = [`${r.kind === 'night' ? 'ночёвка' : 'привал'} ${time}`, time].find((t) =>
-          fits(f * width - textWidth(t) / 2, textWidth(t)),
-        );
-        if (text) label(f, text, 'strip-label-rest');
+        placing: for (const text of [
+          `${r.kind === 'night' ? 'ночёвка' : 'привал'} ${time}`,
+          time,
+        ]) {
+          const w = textWidth(text);
+          for (const c of centers) {
+            if (fits(c - w / 2, w)) {
+              label(c / width, text, 'strip-label-rest');
+              break placing;
+            }
+          }
+        }
       }
 
       for (const st of stars) {

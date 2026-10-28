@@ -20,6 +20,7 @@ import {
 } from '../src/player/position';
 import {
   edgeScroll,
+  joinStops,
   followView,
   MIN_VIEW,
   pacePaths,
@@ -251,16 +252,31 @@ describe('strip model', () => {
     expect(area.match(/Z/g)).toHaveLength(2);
   });
 
+  it('куски одного привала (между ними не больше 3 минут) — один привал', () => {
+    const t = [0, 600, 700, 1300, 2000, 2600];
+    const joined = joinStops(t, [
+      { start: 0, end: 1, durationS: 600 },
+      // Через 100 с — тот же привал (отошёл в сторону по лагерю).
+      { start: 2, end: 3, durationS: 600 },
+      // Через 700 с — уже другой.
+      { start: 4, end: 5, durationS: 600 },
+    ]);
+    expect(joined).toEqual([
+      { start: 0, end: 3, durationS: 1300 },
+      { start: 4, end: 5, durationS: 600 },
+    ]);
+  });
+
   it('привал прямо перед ночёвкой входит в ночёвку, остальные — сами по себе', () => {
     const a = timeAxis(track, summarizeDays(track));
     const early = { start: 0, end: 1, durationS: 200 };
-    // Стоял с 200 с до конца дня (1000 с) — это уже ночёвка.
-    const lastOfDay = { start: 1, end: 3, durationS: 800 };
+    // Стоял с 800 с до конца дня (1000 с) — это уже ночёвка; ранний привал кончился за 600 с до него.
+    const lastOfDay = { start: 2, end: 3, durationS: 200 };
     const spans = restSpans(track, [early, lastOfDay], a);
     expect(spans.map((s) => s.kind)).toEqual(['stop', 'night']);
     const night = spans[1]!;
-    expect(night.x0).toBeCloseTo(a.timeToX(200));
-    expect(night.durationS).toBe(50_000 - 200);
+    expect(night.x0).toBeCloseTo(a.timeToX(800));
+    expect(night.durationS).toBe(50_000 - 800);
     // Привал, кончившийся задолго до конца дня, ночёвку не трогает.
     const mid = restSpans(track, [{ start: 1, end: 2, durationS: 600 }], a);
     expect(mid.map((s) => [s.kind, s.durationS])).toEqual([

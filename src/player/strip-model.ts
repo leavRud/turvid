@@ -349,12 +349,35 @@ export const NIGHT_MERGE_S = 120;
 export const REST_LABEL_MIN_S = 15 * 60;
 
 /**
- * Привалы и ночёвки для подписей на шкале времени. Привал, которым кончился день (сразу
- * перед ночёвкой), входит в ночёвку: она начинается с него, и длительность — вместе с ним.
+ * Остановки, между которыми не больше столько, — один привал на полосе, с. Поиск остановок
+ * режет долгий привал на куски, стоит отойти от первой точки дальше 30 м (ходил по лагерю).
  */
-export function restSpans(track: TrackData, stops: Stop[], axis: TimeAxis): RestSpan[] {
+export const STOP_JOIN_S = 3 * 60;
+
+/** Склеить соседние куски одного привала (см. STOP_JOIN_S). */
+export function joinStops(t: ArrayLike<number>, stops: Stop[]): Stop[] {
+  const out: Stop[] = [];
+  for (const s of [...stops].sort((a, b) => a.start - b.start)) {
+    const last = out[out.length - 1];
+    if (last && (t[s.start] as number) - (t[last.end] as number) <= STOP_JOIN_S) {
+      last.end = Math.max(last.end, s.end);
+      last.durationS = (t[last.end] as number) - (t[last.start] as number);
+    } else {
+      out.push({ ...s });
+    }
+  }
+  return out;
+}
+
+/**
+ * Привалы и ночёвки для подписей на шкале времени. Соседние куски одного привала склеены.
+ * Привал, которым кончился день (сразу перед ночёвкой), входит в ночёвку: она начинается
+ * с него, и длительность — вместе с ним.
+ */
+export function restSpans(track: TrackData, rawStops: Stop[], axis: TimeAxis): RestSpan[] {
   const t = track.t;
   if (!t) return [];
+  const stops = joinStops(t, rawStops);
   const nights = axis.segments.filter((s) => s.night);
   const merged = new Set<Stop>();
   const out: RestSpan[] = nights.map((n) => {
